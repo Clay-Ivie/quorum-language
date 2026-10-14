@@ -1028,7 +1028,7 @@ action Update(number seconds)
             end
 
             Item3D copy3D = LoadItem3D(json)
-            copy3D:SetName(original:GetName() + " Copy")
+            copy3D:SetName(GetCopyName(layer, original:GetName()))
             copy3D:SetPosition(original:GetX() + original:GetWidth(), original:GetY(), original:GetZ())
             copy = copy3D
         elseif item is Item2D
@@ -1082,6 +1082,46 @@ action Update(number seconds)
             end
         end
         return wrapped
+    end
+
+    /*
+    This action returns the name for a new copy of an item. Any " Copy" suffix is removed from the
+    original name first, so copying "Coin Copy 2" also produces "Coin Copy 3" rather than "Coin Copy 2 Copy 1".
+    The number is the first one not already used by an item in the layer.
+    */
+    private action GetCopyName(EditorLayer layer, text originalName) returns text
+        text baseName = originalName
+        Array<text> parts = originalName:Split(" Copy")
+        if parts:Get(0):IsEmpty() = false
+            baseName = parts:Get(0)
+        end
+
+        integer copyNumber = 1
+        repeat while NameExistsInLayer(layer, baseName + " Copy " + copyNumber)
+            copyNumber = copyNumber + 1
+        end
+        return baseName + " Copy " + copyNumber
+    end
+
+    /*
+    This action returns true if an item in the layer has the given name. Editor items are skipped,
+    since the selection highlights share the names of the items they highlight.
+    */
+    private action NameExistsInLayer(EditorLayer layer, text name) returns boolean
+        if layer is EditorLayer3D = false
+            return false
+        end
+
+        SceneConstants constants
+        EditorLayer3D layer3D = cast(EditorLayer3D, layer)
+        Iterator<Item3D> items = layer3D:GetIterator()
+        repeat while items:HasNext()
+            Item3D item = items:Next()
+            if item:HasProperty(constants:EDITOR_TAG) = false and item:GetName() = name
+                return true
+            end
+        end
+        return false
     end
 
     /*
