@@ -1477,6 +1477,9 @@ InputSet shiftF10SetTextBox
         SelectionScaleBehavior selectionScaleZUpBehavior
         SelectionScaleBehavior selectionScaleZDownBehavior
         SelectionDeleteBehavior selectionDeleteBehavior
+        SelectionDuplicateBehavior selectionDuplicateBehavior
+        SelectionCopyBehavior selectionCopyBehavior
+        SelectionPasteBehavior selectionPasteBehavior
         SelectionCancelBehavior selectionCancelBehavior
         SelectionResetScaleBehavior selectionResetScaleBehavior
         SelectSceneItemBehavior selectSceneItemBehavior
@@ -1918,8 +1921,28 @@ InputSet shiftF10SetTextBox
         InputSet selectionDeleteSet2
         selectionDeleteSet2:SetKeyboardInput(keys:BACKSPACE)
 
+        InputSet selectionDuplicateSet
+        selectionDuplicateSet:SetKeyboardInput(keys:D)
+        InputSet selectionCopySet
+        selectionCopySet:SetKeyboardInput(keys:C)
+        InputSet selectionPasteSet
+        selectionPasteSet:SetKeyboardInput(keys:V)
+        if ShouldUseMacKeys()
+            selectionDuplicateSet = AddShiftModifier(AddMetaModifier(selectionDuplicateSet))
+            selectionCopySet = AddMetaModifier(selectionCopySet)
+            selectionPasteSet = AddMetaModifier(selectionPasteSet)
+        else
+            selectionDuplicateSet = AddShiftModifier(AddControlModifier(selectionDuplicateSet))
+            selectionCopySet = AddControlModifier(selectionCopySet)
+            selectionPasteSet = AddControlModifier(selectionPasteSet)
+        end
+
+
         selectionTable:Add(selectionDeleteSet, selectionDeleteBehavior)
         selectionTable:Add(selectionDeleteSet2, selectionDeleteBehavior)
+        selectionTable:Add(selectionDuplicateSet, selectionDuplicateBehavior)
+        selectionTable:Add(selectionCopySet, selectionCopyBehavior)
+        selectionTable:Add(selectionPasteSet, selectionPasteBehavior)
         selectionTable:Add(selectionCancelSet, selectionCancelBehavior)
 
         selectionTable:Add(toggleGridInput, toggleGridBehavior)
@@ -2027,6 +2050,7 @@ table:Add3D(GetLeftClick(), selectScene3DItemBehavior)
         dragOffSet:SetDropItemInput()
         dragOffSet:SetInputTrigger(dragOffSet:FINISH_UNCAUGHT)
 
+        table:Add3D(selectionPasteSet, selectionPasteBehavior)
         table:Add2D(dragIntoSet, sceneEditorAcceptDragBehavior)
         table:Add2D(dragIntoContinueSet, sceneEditorAcceptDragBehavior)
         table:Add2D(dragIntoFinishSet, sceneEditorAcceptDragBehavior)

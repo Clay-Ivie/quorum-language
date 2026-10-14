@@ -21,6 +21,7 @@ use Libraries.Interface.Events.FocusListener
 use Libraries.Interface.Events.FocusEvent
 use Libraries.Game.Graphics.Drawable
 use Libraries.Containers.HashTable
+use Libraries.Containers.Iterator
 use Libraries.Game.Game
 use Libraries.System.File
 use Libraries.Interface.Controls.Button
@@ -157,6 +158,9 @@ class SceneEditor is Control, DefaultSceneManager
     */
     Array<Item> filteredItems = undefined
 
+    // The last item copied with CopyItem, stored as JSON so it can be pasted with PasteCopiedItem.
+    JavaScriptObjectNotation copiedItemJson = undefined
+
     /*
     "Highlight" drawables used to show which items have been filtered.
     */
@@ -201,7 +205,7 @@ class SceneEditor is Control, DefaultSceneManager
         SetView2D(view)
 
         SetInputGroup("SceneEditor")
-        SetName("Scene Editor")
+        SetName("Scene Editor TEST")
         SetFocusable(true)
         SetAccessibilityCode(parent:Item:CUSTOM)
 
@@ -1003,6 +1007,115 @@ action Update(number seconds)
         SceneEditorChangeEvent event
         event:Set(me, item, undefined, resultLayer, event:REMOVED)
         NotifySceneEditorChangeListeners(event)
+    end
+
+    /*
+    This action creates a copy of an item that has been added to the scene. The copy is
+    placed in the same layer, offset along the X axis by the width of the original so the
+    two do not overlap. The copy is then selected so it can be moved right away. The copy is
+    recorded as an insert edit, so it can be undone.
+    */
+    action Duplicate(Item item)
+        EditorLayer layer = undefined
+        Item copy = undefined
+
+        if item is Item3D
+            Item3D original = cast(Item3D, item)
+            layer = cast(EditorLayer3D, original:GetLayer())
+            JavaScriptObjectNotation json = WrapArrayProperties(SaveItem3D(original))
+            if layer = undefined or json = undefined
+                return now
+            end
+
+            Item3D copy3D = LoadItem3D(json)
+            copy3D:SetName(original:GetName() + " Copy")
+            copy3D:SetPosition(original:GetX() + original:GetWidth(), original:GetY(), original:GetZ())
+            copy = copy3D
+        elseif item is Item2D
+            Item2D original = cast(Item2D, item)
+            layer = cast(EditorLayer2D, original:GetLayer())
+            JavaScriptObjectNotation json = SaveItem2D(original)
+            if layer = undefined or json = undefined
+                return now
+            end
+
+            Item2D copy2D = parent:DefaultSceneManager:LoadItem2D(json)
+            copy2D:SetName(original:GetName() + " Copy")
+            copy2D:SetPosition(original:GetX() + original:GetWidth(), original:GetY())
+            copy = copy2D
+        else
+            return now
+        end
+
+        Add(layer, copy)
+        NotifyAccessibility(copy, "Duplicated " + copy:GetName())
+
+        if GetSelectedLayer() not= layer
+            SetSelectedLayer(layer)
+        end
+
+        Array<Item> selected
+        selected:Add(copy)
+        SetFilteredItems(selected, true)
+    end
+
+    /*
+    The scene loader reads position, size, scale, rotation, and color arrays through an outer
+    array, but SaveItem3D writes them without it. This action wraps those values so a saved item
+    can be loaded back with LoadItem3D, as CopyItem and Duplicate do.
+    */
+    private action WrapArrayProperties(JavaScriptObjectNotation json) returns JavaScriptObjectNotation
+        // Build a new object rather than adding to json, since Add would keep the unwrapped entry too.
+        JavaScriptObjectNotation wrapped
+        Iterator<JavaScriptObjectNotation> iterator = json:GetIterator()
+        repeat while iterator:HasNext()
+            JavaScriptObjectNotation child = iterator:Next()
+            text key = child:GetKey()
+            if key = properties:POSITION or key = properties:SIZE or key = properties:SCALE or key = properties:ROTATION or key = properties:COLOR
+                JavaScriptObjectNotation outer
+                outer:SetArray()
+                outer:Add(child)
+                outer:SetKey(key)
+                wrapped:Add(outer)
+            else
+                wrapped:Add(child)
+            end
+        end
+        return wrapped
+    end
+
+    /*
+    This action stores a copy of the given item so it can be pasted into the scene later with
+    PasteCopiedItem. Only 3D items can be copied. The item is saved to JSON, the same way the
+    scene is saved, so pasting creates a new item and leaves the original untouched.
+    */
+    action CopyItem(Item item)
+        if item is Item3D
+            Item3D original = cast(Item3D, item)
+            copiedItemJson = WrapArrayProperties(SaveItem3D(original))
+        end
+    end
+
+    /*
+    This action pastes the last copied item into the selected 3D layer. The pasted item is
+    placed beside the copied item, selected, and recorded as an insert edit so it can be undone.
+    Nothing happens if no item has been copied or the selected layer is not 3D.
+    */
+    action PasteCopiedItem
+        EditorLayer layer = GetSelectedLayer()
+        if copiedItemJson = undefined or layer is EditorLayer3D = false
+            return now
+        end
+
+        Item3D copy3D = LoadItem3D(copiedItemJson)
+        copy3D:SetName(copy3D:GetName() + " Copy")
+        copy3D:SetPosition(copy3D:GetX() + copy3D:GetWidth(), copy3D:GetY(), copy3D:GetZ())
+        Add(layer, copy3D)
+        NotifyAccessibility(copy3D, "Pasted " + copy3D:GetName())
+
+        Array<Item> selected
+        selected:Add(copy3D)
+        SetFilteredItems(selected, true)
     end
 
     action CreateItemPreview(ItemBlueprint schematic) returns ItemPreview
