@@ -1,0 +1,31 @@
+package Libraries.Interface.Controls.Scenes.Dialogs
+
+use Libraries.Interface.Controls.Button
+use Libraries.Interface.Events.FocusEvent
+use Libraries.Game.Graphics.Color
+
+/*
+    The ColorSwatchButton class is a swatch in the color picker. It shows a black border while it has
+    focus, so the swatch being tabbed to can be seen.
+*/
+class ColorSwatchButton is Button
+
+    /*
+        Shows the focus border when the swatch gains focus.
+    */
+    action GainedFocus(FocusEvent event)
+        parent:Button:GainedFocus(event)
+        Color border
+        border:SetColor(0.0, 0.0, 0.0, 1.0)
+        SetBorderColor(border)
+        SetBorderThickness(3)
+    end
+
+    /*
+        Removes the focus border when the swatch loses focus.
+    */
+    action LostFocus(FocusEvent event)
+        parent:Button:LostFocus(event)
+        SetBorderThickness(0)
+    end
+end
