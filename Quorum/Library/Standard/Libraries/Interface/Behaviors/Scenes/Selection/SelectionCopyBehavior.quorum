@@ -6,15 +6,20 @@ use Libraries.Interface.Controls.Scenes.SceneEditor
 use Libraries.Interface.Behaviors.Behavior
 
 /*
-    This behavior is used by the selection system in the scene editor to copy an item in a scene.
-    The selected item is saved so it can be pasted with the paste behavior. The original item is
-    not changed.
+    This behavior is used by the selection system in the scene editor to copy items in a scene.
+    All of the selected items are saved so they can be pasted with the paste behavior. The
+    original items are not changed.
 */
 class SelectionCopyBehavior is Behavior
     action Run(BehaviorEvent event)
         if event:GetItem() is SelectionHighlight
             SelectionHighlight highlight = cast(SelectionHighlight, event:GetItem())
-            highlight:GetSceneEditor():CopyItem(highlight:GetItem())
+            SceneEditor editor = highlight:GetSceneEditor()
+            if editor:GetFilteredItems() not= undefined
+                editor:CopyItems(editor:GetFilteredItems())
+            else
+                editor:CopyItem(highlight:GetItem())
+            end
         end
     end
 end
