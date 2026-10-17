@@ -25,6 +25,10 @@ use Libraries.Interface.Controls.Scenes.Items.Previews.ModelPreview
 use Libraries.Interface.Controls.Scenes.Items.Previews.Custom3DPrimitivePreview
 use Libraries.Interface.Controls.Scenes.Dialogs.PropertiesDialog
 use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesEnablePhysicsBehavior
+use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesOpenColorPickerBehavior
+use Libraries.Interface.Controls.Scenes.Dialogs.ColorPickerDialog
+use Libraries.Interface.Controls.Button
+use Libraries.Compute.Math
 
 class Item3DPropertiesDialog is PropertiesDialog
 
@@ -43,6 +47,7 @@ class Item3DPropertiesDialog is PropertiesDialog
     TextField colorRedField = undefined
     TextField colorGreenField = undefined
     TextField colorBlueField = undefined
+    boolean suppressTextChanges = false
     Checkbox physicsEnabledCheckbox = undefined
     ButtonGroup responsivenessGroup = undefined
     TextField massField = undefined
@@ -59,7 +64,7 @@ class Item3DPropertiesDialog is PropertiesDialog
         TextField field
         nameField = field
 
-        SetName("Object Properties")
+        SetName("Object Properties TEST 2")
 
         Label basicPropertiesLabel
         basicPropertiesLabel:SetSize(18)
@@ -348,6 +353,21 @@ class Item3DPropertiesDialog is PropertiesDialog
         focusArray:Add(colorBlueField)
 
         colorContainer:Add(colorFieldContainer)
+
+        Button pickColorButton
+        pickColorButton:SetName("Pick Color...")
+        pickColorButton:SetFocusable(true)
+        pickColorButton:SetPercentageWidth(1.0)
+        pickColorButton:SetTopMargin(8)
+        pickColorButton:SetBottomMargin(4)
+        ColorPickerDialog colorPicker
+        colorPicker:Initialize(GetSceneEditor())
+        colorPicker:SetObjectDialog(me)
+        PropertiesOpenColorPickerBehavior openColorPickerBehavior
+        openColorPickerBehavior:SetDialog(colorPicker)
+        pickColorButton:SetBehavior(openColorPickerBehavior)
+        colorContainer:Add(pickColorButton)
+        focusArray:Add(pickColorButton)
         panel:Add(colorContainer)
 
         Label physicsLabel
@@ -563,6 +583,28 @@ FlowLayout responseGroupLayout
     end
 
     /*
+        Converts a color channel from the 0 to 1 range that colors use into the 0 to 255 range shown
+        in the color fields.
+    */
+    private action ToColorText(number channel) returns text
+        Math math
+        integer whole = cast(integer, math:RoundToNearestInteger(channel * 255.0))
+        return "" + whole
+    end
+
+    /*
+        Sets the red, green, and blue fields to the given values, such as after a color is picked in the
+        color picker. The fields are updated without applying the values to the object again.
+    */
+    action SetColorFields(number red, number green, number blue)
+        suppressTextChanges = true
+        colorRedField:SetText(ToColorText(red))
+        colorGreenField:SetText(ToColorText(green))
+        colorBlueField:SetText(ToColorText(blue))
+        suppressTextChanges = false
+    end
+
+    /*
         This action takes an EditorItem and sets the fields in the dialog based on its
         properties
     */
@@ -592,9 +634,9 @@ FlowLayout responseGroupLayout
         
         Color color = item:GetColor()
         if color not= undefined
-            colorRedField:SetText("" + color:GetRed())
-            colorGreenField:SetText("" + color:GetGreen())
-            colorBlueField:SetText("" + color:GetBlue())
+            colorRedField:SetText(ToColorText(color:GetRed()))
+            colorGreenField:SetText(ToColorText(color:GetGreen()))
+            colorBlueField:SetText(ToColorText(color:GetBlue()))
         else
             colorRedField:SetText("")
             colorGreenField:SetText("")
@@ -616,6 +658,10 @@ FlowLayout responseGroupLayout
         If the text is updated to any invalid values the text is ignored. 
     */
     action TextChanged(TextChangeEvent event)
+        if suppressTextChanges
+            return now
+        end
+
         EditorItem3D currentItem = cast(EditorItem3D, GetSceneEditor():GetSelectedItem())
         Control control = event:GetControl()
 
@@ -725,7 +771,7 @@ FlowLayout responseGroupLayout
             end
         elseif control:Equals(colorRedField)
             check
-                number value = colorRedField:GetText():ParseNumber()
+                number value = colorRedField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetRed()
                     color:SetRed(value)
@@ -736,7 +782,7 @@ FlowLayout responseGroupLayout
             end
         elseif control:Equals(colorGreenField)
             check
-                number value = colorGreenField:GetText():ParseNumber()
+                number value = colorGreenField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetGreen()
                     color:SetGreen(value)
@@ -747,7 +793,7 @@ FlowLayout responseGroupLayout
             end
         elseif control:Equals(colorBlueField)
             check
-                number value = colorBlueField:GetText():ParseNumber()
+                number value = colorBlueField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetBlue()
                     color:SetBlue(value)

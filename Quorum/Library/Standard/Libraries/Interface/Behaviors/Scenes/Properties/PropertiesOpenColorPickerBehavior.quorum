@@ -1,0 +1,21 @@
+package Libraries.Interface.Behaviors.Scenes.Properties
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Behaviors.Behavior
+use Libraries.Interface.Controls.Scenes.Dialogs.ColorPickerDialog
+
+/*
+    This behavior opens the color picker window from the Object Properties dialog. The window
+    edits the object that is selected when it opens.
+*/
+class PropertiesOpenColorPickerBehavior is Behavior
+    ColorPickerDialog dialog = undefined
+
+    action SetDialog(ColorPickerDialog picker)
+        dialog = picker
+    end
+
+    action Run(BehaviorEvent event)
+        dialog:Open()
+    end
+end
