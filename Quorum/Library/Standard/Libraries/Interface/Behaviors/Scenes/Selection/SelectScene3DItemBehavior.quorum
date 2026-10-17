@@ -23,6 +23,7 @@ use Libraries.Interface.Controls.Scenes.Items.EditorItem3D
 use Libraries.Interface.Controls.Scenes.SceneConstants
 use Libraries.Interface.Controls.Scenes.Items.EditorCursor
 use Libraries.Game.Item3DDepthComparison
+use Libraries.Interface.Controls.Scenes.Items.EditorModel
 
 /*
     This behavior is used to select an item in the scene editor. The input expected 
@@ -84,6 +85,18 @@ end
             result:Add(targetArray:Get(0))
         end
         
+        // While the eye dropper is on, clicking an object copies its color instead of selecting it,
+        // and clicking empty space turns the eye dropper off.
+        if editor:IsEyeDropperActive()
+            editor:CancelMouseDrag()
+            if result:IsEmpty()
+                editor:CancelEyeDropper()
+            elseif result:Get(0) is EditorModel
+                editor:ApplyEyeDropper(cast(EditorModel, result:Get(0)))
+            end
+            return now
+        end
+
         if not result:IsEmpty()
             if addToSelection
                 editor:CancelMouseDrag()

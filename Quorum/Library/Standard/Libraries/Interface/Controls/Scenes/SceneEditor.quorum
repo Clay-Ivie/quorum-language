@@ -49,6 +49,7 @@ use Libraries.Interface.Undo.SceneEditorDeleteEdit
 use Libraries.Interface.Events.SceneEditorChangeEvent
 use Libraries.Interface.Undo.SceneEditorInsertEdit
 use Libraries.Interface.Undo.SceneEditorMoveEdit
+use Libraries.Interface.Undo.SceneEditorColorEdit
 use Libraries.Interface.Controls.Scenes.Items.Previews.ItemPreview2D
 use Libraries.Interface.Controls.Scenes.Items.Previews.ItemPreview3D
 use Libraries.Interface.Controls.Scenes.Items.Previews.ModelPreview
@@ -152,6 +153,17 @@ class SceneEditor is Control, DefaultSceneManager
     Vector3 workVector3
 
     Accessibility accessibility = undefined
+
+    // The object whose color the eye dropper will change, or undefined when the eye dropper is off.
+    EditorModel eyeDropperTarget = undefined
+
+    // Gives spoken names for colors, such as after the eye dropper copies one.
+    SceneColorNames colorNames
+
+    // A message for screen readers that waits until a focus change has been announced, because a
+    // focus announcement replaces any message sent just before it. See AnnounceAfterFocus.
+    text pendingAnnouncement = ""
+    number pendingAnnouncementDelay = 0
     Math math
     Color color
 
@@ -547,6 +559,18 @@ class SceneEditor is Control, DefaultSceneManager
     end
 
 action Update(number seconds)
+        if pendingAnnouncement not= ""
+            pendingAnnouncementDelay = pendingAnnouncementDelay - seconds
+            if pendingAnnouncementDelay <= 0
+                Item focused = manager:GetFocus()
+                if focused = undefined
+                    focused = me
+                end
+                NotifyAccessibility(focused, pendingAnnouncement)
+                pendingAnnouncement = ""
+            end
+        end
+
         if layers:IsEmpty() or GetSelectedLayer() = undefined
             return now
         end
@@ -2251,6 +2275,157 @@ action Update(number seconds)
         if accessibility not= undefined
             accessibility:Notify(item, message)
         end
+    end
+
+    /*
+        Turns on the eye dropper for the given object. The next object clicked has its color copied
+        to the target.
+    */
+    action StartEyeDropper(EditorModel target)
+        if target = undefined
+            return now
+        end
+
+        eyeDropperTarget = target
+        NotifyAccessibility(me, "Eye dropper on. Click an object to copy its color to " + GetEyeDropperName(target) + ", or click empty space to cancel.")
+    end
+
+    /*
+        Returns true while the eye dropper is waiting for an object to copy a color from.
+    */
+    action IsEyeDropperActive returns boolean
+        return eyeDropperTarget not= undefined
+    end
+
+    /*
+        Turns off the eye dropper without changing any colors, and selects the target object again.
+        Clicking empty space in the scene does this.
+    */
+    action CancelEyeDropper
+        if eyeDropperTarget = undefined
+            return now
+        end
+
+        EditorModel target = eyeDropperTarget
+        eyeDropperTarget = undefined
+        SelectEyeDropperTarget(target)
+        AnnounceAfterFocus("Eye dropper canceled")
+    end
+
+    /*
+        Copies the source object's red, green, and blue values to the eye dropper's target, keeping
+        the target's alpha. The target is then selected again so its properties show the new color.
+    */
+    action ApplyEyeDropper(EditorModel source)
+        if eyeDropperTarget = undefined or source = undefined
+            return now
+        end
+
+        if source = eyeDropperTarget
+            NotifyAccessibility(me, "That is the object being changed. Choose a different object.")
+            return now
+        end
+
+        Color sourceColor = source:GetColor()
+        if sourceColor = undefined
+            NotifyAccessibility(me, GetEyeDropperName(source) + " has no color to copy. Choose a different object.")
+            return now
+        end
+
+        EditorModel target = eyeDropperTarget
+        eyeDropperTarget = undefined
+
+        number alpha = 1.0
+        Color existing = target:GetColor()
+        if existing not= undefined
+            alpha = existing:GetAlpha()
+        end
+
+        Color color
+        color:SetColor(sourceColor:GetRed(), sourceColor:GetGreen(), sourceColor:GetBlue(), alpha)
+        ChangeItemColor(target, color)
+
+        SelectEyeDropperTarget(target)
+        AnnounceAfterFocus("Copied " + colorNames:GetName(color) + " from " + GetEyeDropperName(source) + " to " + GetEyeDropperName(target))
+    end
+
+    /*
+        Sends a message to screen readers after the current focus change has been announced. Quorum
+        announces focus changes on the next frame, and screen readers replace a message with any
+        announcement that comes right after it, so a message sent right away would not be heard.
+    */
+    private action AnnounceAfterFocus(text message)
+        pendingAnnouncement = message
+        pendingAnnouncementDelay = 0.3
+    end
+
+    /*
+        Changes an object's color and records the change, so it can be undone and redone. The color
+        picker and the eye dropper both use this.
+    */
+    action ChangeItemColor(EditorModel item, Color color)
+        Color before
+        Color existing = item:GetColor()
+        if existing not= undefined
+            before = existing:Copy()
+        else
+            before = before:White()
+        end
+        Color after = color:Copy()
+
+        SetItemColor(item, after)
+        RecordColorChange(item, before, after)
+    end
+
+    /*
+        Records a color change that has already been made, so it can be undone and redone. The
+        Object Properties dialog uses this after a color is typed into its fields.
+    */
+    action RecordColorChange(EditorModel item, Color before, Color after)
+        SceneEditorColorEdit edit
+        edit:Create(me, item, before:Copy(), after:Copy())
+        editManager:Add(edit)
+    end
+
+    /*
+        Sets an object's color without recording an undo step, and refreshes the Object Properties
+        fields if that object is selected. Undo and redo use this.
+    */
+    action SetItemColor(EditorModel item, Color color)
+        item:SetColor(color:Copy())
+
+        // The selection can be the model's highlight rather than the model itself.
+        EditorItem selected = GetSelectedItem()
+        Item selectedModel = selected
+        if selected is ModelSelectionHighlight
+            ModelSelectionHighlight highlight = cast(ModelSelectionHighlight, selected)
+            selectedModel = highlight:GetEditorModel()
+        end
+        Item changed = item
+        if selected not= undefined and selectedModel = changed
+            UpdateActivePropertiesDialog(selected)
+        end
+    end
+
+    /*
+        Tells screen readers the object's name and the name of its color, after the given text.
+    */
+    action AnnounceItemColor(EditorModel item, text prefix)
+        NotifyAccessibility(me, prefix + GetEyeDropperName(item) + " is " + colorNames:GetName(item:GetColor()))
+    end
+
+    private action SelectEyeDropperTarget(EditorModel target)
+        Array<Item> items
+        items:Add(target)
+        SetFilteredItems(items, true)
+    end
+
+    private action GetEyeDropperName(EditorModel model) returns text
+        text name = model:GetName()
+        if name = undefined or name = ""
+            return "object"
+        end
+        return name
     end
 
     action SetGridSnapping(boolean enabled)

@@ -21,11 +21,14 @@ use Libraries.Interface.Controls.Scenes.Items.EditorItem
 use Libraries.Interface.Controls.Scenes.Items.EditorItem3D
 use Libraries.Interface.Selections.SceneEditorSelection
 use Libraries.Interface.Controls.Scenes.Items.Highlights.ModelSelectionHighlight
+use Libraries.Interface.Controls.Scenes.Items.EditorModel
+use Libraries.Interface.Item
 use Libraries.Interface.Controls.Scenes.Items.Previews.ModelPreview
 use Libraries.Interface.Controls.Scenes.Items.Previews.Custom3DPrimitivePreview
 use Libraries.Interface.Controls.Scenes.Dialogs.PropertiesDialog
 use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesEnablePhysicsBehavior
 use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesOpenColorPickerBehavior
+use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesEyeDropperBehavior
 use Libraries.Interface.Controls.Scenes.Dialogs.ColorPickerDialog
 use Libraries.Interface.Controls.Button
 use Libraries.Compute.Math
@@ -48,6 +51,13 @@ class Item3DPropertiesDialog is PropertiesDialog
     TextField colorGreenField = undefined
     TextField colorBlueField = undefined
     boolean suppressTextChanges = false
+
+    // While a color is being typed into the Red, Green, or Blue field, the object being changed and
+    // its color before typing started. The change is recorded as one undo step when the field loses
+    // focus.
+    EditorModel colorTypingItem = undefined
+    Color colorTypingStart = undefined
+    ColorFieldFocusListener colorFieldFocusListener
     Checkbox physicsEnabledCheckbox = undefined
     ButtonGroup responsivenessGroup = undefined
     TextField massField = undefined
@@ -352,22 +362,50 @@ class Item3DPropertiesDialog is PropertiesDialog
         focusArray:Add(colorGreenField)
         focusArray:Add(colorBlueField)
 
+        colorFieldFocusListener:SetDialog(me)
+        colorRedField:AddFocusListener(colorFieldFocusListener)
+        colorGreenField:AddFocusListener(colorFieldFocusListener)
+        colorBlueField:AddFocusListener(colorFieldFocusListener)
+
         colorContainer:Add(colorFieldContainer)
+
+        // The Pick Color and Eye Dropper buttons share a row.
+        FlowLayout colorButtonLayout
+        Control colorButtonContainer
+        colorButtonContainer:SetLayout(colorButtonLayout)
+        colorButtonContainer:SetPercentageWidth(1.0)
+        colorButtonContainer:SetVerticalLayoutMode(positionContainer:FIT_CONTENTS)
+        colorButtonContainer:SetTopMargin(8)
+        colorButtonContainer:SetBottomMargin(4)
 
         Button pickColorButton
         pickColorButton:SetName("Pick Color...")
         pickColorButton:SetFocusable(true)
-        pickColorButton:SetPercentageWidth(1.0)
-        pickColorButton:SetTopMargin(8)
-        pickColorButton:SetBottomMargin(4)
+        pickColorButton:SetPercentageWidth(0.5)
+        pickColorButton:SetPixelWidth(-4)
+        pickColorButton:SetRightMargin(8)
         ColorPickerDialog colorPicker
         colorPicker:Initialize(GetSceneEditor())
         colorPicker:SetObjectDialog(me)
         PropertiesOpenColorPickerBehavior openColorPickerBehavior
         openColorPickerBehavior:SetDialog(colorPicker)
         pickColorButton:SetBehavior(openColorPickerBehavior)
-        colorContainer:Add(pickColorButton)
+        colorButtonContainer:Add(pickColorButton)
         focusArray:Add(pickColorButton)
+
+        Button eyeDropperButton
+        eyeDropperButton:SetName("Eye Dropper")
+        eyeDropperButton:SetDescription("Copy the color of another object to this one")
+        eyeDropperButton:SetFocusable(true)
+        eyeDropperButton:SetPercentageWidth(0.5)
+        eyeDropperButton:SetPixelWidth(-4)
+        PropertiesEyeDropperBehavior eyeDropperBehavior
+        eyeDropperBehavior:SetDialog(me)
+        eyeDropperButton:SetBehavior(eyeDropperBehavior)
+        colorButtonContainer:Add(eyeDropperButton)
+        focusArray:Add(eyeDropperButton)
+
+        colorContainer:Add(colorButtonContainer)
         panel:Add(colorContainer)
 
         Label physicsLabel
@@ -596,6 +634,73 @@ FlowLayout responseGroupLayout
         Sets the red, green, and blue fields to the given values, such as after a color is picked in the
         color picker. The fields are updated without applying the values to the object again.
     */
+    /*
+        Turns on the eye dropper for the selected object, so the next object picked in the scene
+        has its color copied to it.
+    */
+    action StartEyeDropper
+        GetSceneEditor():StartEyeDropper(GetModel(GetSceneEditor():GetSelectedItem()))
+    end
+
+    /*
+        Returns the model behind an item. The selection can be the model's highlight rather than the
+        model itself. Returns undefined if the item isn't a model.
+    */
+    private action GetModel(Item item) returns EditorModel
+        if item is ModelSelectionHighlight
+            ModelSelectionHighlight highlight = cast(ModelSelectionHighlight, item)
+            return highlight:GetEditorModel()
+        elseif item is EditorModel
+            return cast(EditorModel, item)
+        end
+        return undefined
+    end
+
+    /*
+        Called just before a typed value changes an object's color. The first change remembers the
+        color before typing started, so all the typing can be undone in one step.
+    */
+    private action BeginColorTyping(Item item)
+        EditorModel model = GetModel(item)
+        if model = undefined or model = colorTypingItem
+            return now
+        end
+
+        FinishColorTyping()
+
+        Color start = model:GetColor()
+        if start = undefined
+            Color white
+            start = white:White()
+        end
+        colorTypingItem = model
+        colorTypingStart = start:Copy()
+    end
+
+    /*
+        Records the color typed since BeginColorTyping as one undo step, if the color changed. This
+        runs when a color field loses focus.
+    */
+    action FinishColorTyping
+        if colorTypingItem = undefined
+            return now
+        end
+
+        EditorModel model = colorTypingItem
+        Color start = colorTypingStart
+        colorTypingItem = undefined
+        colorTypingStart = undefined
+
+        Color current = model:GetColor()
+        if current = undefined
+            return now
+        end
+
+        if current:GetRed() not= start:GetRed() or current:GetGreen() not= start:GetGreen() or current:GetBlue() not= start:GetBlue() or current:GetAlpha() not= start:GetAlpha()
+            GetSceneEditor():RecordColorChange(model, start, current)
+        end
+    end
+
     action SetColorFields(number red, number green, number blue)
         suppressTextChanges = true
         colorRedField:SetText(ToColorText(red))
@@ -632,6 +737,9 @@ FlowLayout responseGroupLayout
         rotationPitchField:SetText("" + item:GetPitch())
         rotationRollField:SetText("" + item:GetRoll())
         
+        // Showing the color must not apply it back to the object. The fields round to whole numbers,
+        // so applying them would change the color slightly and record an undo step.
+        suppressTextChanges = true
         Color color = item:GetColor()
         if color not= undefined
             colorRedField:SetText(ToColorText(color:GetRed()))
@@ -642,6 +750,7 @@ FlowLayout responseGroupLayout
             colorGreenField:SetText("")
             colorBlueField:SetText("")
         end
+        suppressTextChanges = false
 
         physicsEnabledCheckbox:SetToggleState(item:IsEditorPhysicsEnabled())
         
@@ -774,6 +883,7 @@ FlowLayout responseGroupLayout
                 number value = colorRedField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetRed()
+                    BeginColorTyping(currentItem)
                     color:SetRed(value)
                     currentItem:SetColor(color)
                 end
@@ -785,6 +895,7 @@ FlowLayout responseGroupLayout
                 number value = colorGreenField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetGreen()
+                    BeginColorTyping(currentItem)
                     color:SetGreen(value)
                     currentItem:SetColor(color)
                 end
@@ -796,6 +907,7 @@ FlowLayout responseGroupLayout
                 number value = colorBlueField:GetText():ParseNumber() / 255.0
                 Color color = currentItem:GetColor()
                 if value not= color:GetBlue()
+                    BeginColorTyping(currentItem)
                     color:SetBlue(value)
                     currentItem:SetColor(color)
                 end

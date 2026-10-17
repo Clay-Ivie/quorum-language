@@ -1,0 +1,48 @@
+package Libraries.Interface.Undo
+
+use Libraries.Interface.Undo.Edit
+use Libraries.Game.Graphics.Color
+use Libraries.Interface.Controls.Scenes.SceneEditor
+use Libraries.Interface.Controls.Scenes.Items.EditorModel
+
+/*
+    SceneEditorColorEdit records an object's color being changed in the scene editor, such as with
+    the color picker or the eye dropper, so the change can be undone and redone. Undoing and redoing
+    announce the object's color to screen readers, since the change can't otherwise be noticed
+    without seeing it.
+*/
+class SceneEditorColorEdit is Edit
+
+    SceneEditor controller = undefined
+    EditorModel item = undefined
+    Color before = undefined
+    Color after = undefined
+
+    /*
+    This action sets up the edit with the object's color before and after the change.
+    */
+    action Create(SceneEditor controller, EditorModel item, Color before, Color after)
+        me:controller = controller
+        me:item = item
+        me:before = before
+        me:after = after
+    end
+
+    action Undo
+        controller:SetItemColor(item, before)
+        controller:AnnounceItemColor(item, "Undo color. ")
+    end
+
+    action Redo
+        controller:SetItemColor(item, after)
+        controller:AnnounceItemColor(item, "Redo color. ")
+    end
+
+    action GetUndoName returns text
+        return "Undo Color"
+    end
+
+    action GetRedoName returns text
+        return "Redo Color"
+    end
+end

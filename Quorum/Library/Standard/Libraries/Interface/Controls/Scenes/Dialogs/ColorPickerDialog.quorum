@@ -33,6 +33,8 @@ class ColorPickerDialog is Dialog, SelectionListener
     boolean initialized = false
 
     on create
+        SetName("Color Picker")
+        SetDescription("Choose a color for the selected object. Arrow keys or Tab move between colors, Enter or Space applies one.")
         SetInputGroup("Dialog")
         SetPixelWidth(260)
         SetVerticalLayoutMode(parent:Libraries.Interface.Controls.Control:FIT_CONTENTS)
@@ -64,34 +66,36 @@ class ColorPickerDialog is Dialog, SelectionListener
         panel:SetView2D(view)
 
         Label label
-        label:SetText("Click a color")
+        label:SetText("Choose a color")
         label:SetLeftMargin(10)
         label:SetTopMargin(10)
         label:SetBottomMargin(6)
         panel:Add(label)
 
-        Control grid
+        ColorSwatchGrid grid
         FlowLayout gridLayout
         grid:SetLayout(gridLayout)
         grid:SetPercentageWidth(1.0)
-        grid:SetVerticalLayoutMode(grid:FIT_CONTENTS)
+        grid:SetVerticalLayoutMode(panel:FIT_CONTENTS)
         grid:SetLeftMargin(10)
         grid:SetRightMargin(10)
         grid:SetBottomMargin(10)
 
         // Three rows of hues at full, medium, and dark brightness, then a row of grays.
-        AddHueRow(grid, 1.0)
-        AddHueRow(grid, 0.6)
-        AddHueRow(grid, 0.3)
-        AddSwatch(grid, 0.0, 0.0, 0.0)
-        AddSwatch(grid, 0.14, 0.14, 0.14)
-        AddSwatch(grid, 0.29, 0.29, 0.29)
-        AddSwatch(grid, 0.43, 0.43, 0.43)
-        AddSwatch(grid, 0.57, 0.57, 0.57)
-        AddSwatch(grid, 0.71, 0.71, 0.71)
-        AddSwatch(grid, 0.86, 0.86, 0.86)
-        AddSwatch(grid, 1.0, 1.0, 1.0)
+        AddHueRow(grid, 1.0, "")
+        AddHueRow(grid, 0.6, "Medium ")
+        AddHueRow(grid, 0.3, "Dark ")
+        AddSwatch(grid, 0.0, 0.0, 0.0, "Black")
+        AddSwatch(grid, 0.14, 0.14, 0.14, "Very Dark Gray")
+        AddSwatch(grid, 0.29, 0.29, 0.29, "Dark Gray")
+        AddSwatch(grid, 0.43, 0.43, 0.43, "Medium Dark Gray")
+        AddSwatch(grid, 0.57, 0.57, 0.57, "Medium Light Gray")
+        AddSwatch(grid, 0.71, 0.71, 0.71, "Light Gray")
+        AddSwatch(grid, 0.86, 0.86, 0.86, "Very Light Gray")
+        AddSwatch(grid, 1.0, 1.0, 1.0, "White")
 
+        // Each row has 8 swatches, so Up and Down move by 8.
+        grid:SetSwatches(swatches, 8)
         panel:Add(grid)
         Add(panel)
 
@@ -151,9 +155,10 @@ class ColorPickerDialog is Dialog, SelectionListener
 
     /*
         Applies a palette color to the target object, keeping its current alpha, then refreshes the
-        Object Properties fields so they show the new values.
+        Object Properties fields so they show the new values. The swatch is used to announce the
+        change to screen readers.
     */
-    action ApplyPaletteColor(number red, number green, number blue)
+    action ApplyPaletteColor(number red, number green, number blue, Item swatch)
         if target = undefined
             return now
         end
@@ -164,33 +169,44 @@ class ColorPickerDialog is Dialog, SelectionListener
             alpha = existing:GetAlpha()
         end
 
+        // The scene editor records the change so it can be undone.
         Color color
         color:SetColor(red, green, blue, alpha)
-        target:SetColor(color)
+        editor:ChangeItemColor(target, color)
 
         if objectDialog not= undefined
             objectDialog:SetColorFields(red, green, blue)
         end
+
+        if editor not= undefined and swatch not= undefined
+            text objectName = target:GetName()
+            if objectName = undefined or objectName = ""
+                objectName = "object"
+            end
+            editor:NotifyAccessibility(swatch, swatch:GetName() + " applied to " + objectName)
+        end
     end
 
     /*
-        Adds one row of hues. The brightness scales every hue in the row.
+        Adds one row of hues. The brightness scales every hue in the row, and the prefix (such as
+        "Dark ") is added to each color's name.
     */
-    private action AddHueRow(Control grid, number brightness)
-        AddSwatch(grid, brightness, 0.0, 0.0)
-        AddSwatch(grid, brightness, 0.5 * brightness, 0.0)
-        AddSwatch(grid, brightness, brightness, 0.0)
-        AddSwatch(grid, 0.0, 0.7 * brightness, 0.0)
-        AddSwatch(grid, 0.0, brightness, brightness)
-        AddSwatch(grid, 0.0, 0.0, brightness)
-        AddSwatch(grid, 0.5 * brightness, 0.0, 0.8 * brightness)
-        AddSwatch(grid, brightness, 0.0, brightness)
+    private action AddHueRow(Control grid, number brightness, text prefix)
+        AddSwatch(grid, brightness, 0.0, 0.0, prefix + "Red")
+        AddSwatch(grid, brightness, 0.5 * brightness, 0.0, prefix + "Orange")
+        AddSwatch(grid, brightness, brightness, 0.0, prefix + "Yellow")
+        AddSwatch(grid, 0.0, 0.7 * brightness, 0.0, prefix + "Green")
+        AddSwatch(grid, 0.0, brightness, brightness, prefix + "Cyan")
+        AddSwatch(grid, 0.0, 0.0, brightness, prefix + "Blue")
+        AddSwatch(grid, 0.5 * brightness, 0.0, 0.8 * brightness, prefix + "Purple")
+        AddSwatch(grid, brightness, 0.0, brightness, prefix + "Magenta")
     end
 
     /*
-        Adds one clickable color swatch to the grid. Clicking it applies the color.
+        Adds one clickable color swatch to the grid. Clicking it applies the color. The name is what
+        screen readers announce.
     */
-    private action AddSwatch(Control grid, number red, number green, number blue)
+    private action AddSwatch(Control grid, number red, number green, number blue, text colorName)
         Color swatchColor
         swatchColor:SetColor(red, green, blue, 1.0)
 
@@ -199,7 +215,8 @@ class ColorPickerDialog is Dialog, SelectionListener
         applyBehavior:SetColor(red, green, blue)
 
         ColorSwatchButton swatch
-        swatch:SetName("")
+        swatch:SetName(colorName)
+        applyBehavior:SetSwatch(swatch)
         // The square is drawn white and tinted with the swatch color through the icon color.
         Color whiteColor
         whiteColor:SetColor(1.0, 1.0, 1.0, 1.0)

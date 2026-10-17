@@ -3,6 +3,7 @@ package Libraries.Interface.Behaviors.Scenes.Properties
 use Libraries.Interface.Events.BehaviorEvent
 use Libraries.Interface.Behaviors.Behavior
 use Libraries.Interface.Controls.Scenes.Dialogs.ColorPickerDialog
+use Libraries.Interface.Item
 
 /*
     This behavior runs when a swatch in the color picker is clicked. It applies the swatch's
@@ -13,6 +14,7 @@ class PropertiesApplyPaletteColorBehavior is Behavior
     number red = 0.0
     number green = 0.0
     number blue = 0.0
+    Item swatch = undefined
 
     action SetDialog(ColorPickerDialog picker)
         dialog = picker
@@ -24,7 +26,11 @@ class PropertiesApplyPaletteColorBehavior is Behavior
         blue = newBlue
     end
 
+    action SetSwatch(Item item)
+        swatch = item
+    end
+
     action Run(BehaviorEvent event)
-        dialog:ApplyPaletteColor(red, green, blue)
+        dialog:ApplyPaletteColor(red, green, blue, swatch)
     end
 end

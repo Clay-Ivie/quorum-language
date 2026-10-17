@@ -1,0 +1,63 @@
+package Libraries.Interface.Controls.Scenes.Dialogs
+
+use Libraries.Interface.Controls.Control
+use Libraries.Interface.Controls.Button
+use Libraries.Interface.Item
+use Libraries.Game.GameStateManager
+use Libraries.Containers.Array
+
+/*
+    The ColorSwatchGrid class holds the swatches in the color picker. It uses the "ColorSwatchGrid"
+    input group so the arrow keys move focus between swatches. Left and Right move along a row and
+    continue onto the previous or next row. Up and Down move within a column. Focus stays put at
+    the edges of the grid.
+*/
+class ColorSwatchGrid is Control
+
+    Array<Button> swatches = undefined
+    integer columns = 1
+
+    on create
+        SetInputGroup("ColorSwatchGrid")
+    end
+
+    /*
+        Sets the swatches in reading order and how many are in each row.
+    */
+    action SetSwatches(Array<Button> buttons, integer columnCount)
+        swatches = buttons
+        columns = columnCount
+    end
+
+    /*
+        Moves focus from the focused swatch by the given number of rows and columns.
+    */
+    action MoveFocus(integer rowChange, integer columnChange)
+        if swatches = undefined or swatches:IsEmpty()
+            return now
+        end
+
+        GameStateManager manager
+        Item focused = manager:GetFocus()
+        integer index = 0
+        integer current = -1
+        repeat while index < swatches:GetSize() and current = -1
+            Item swatch = swatches:Get(index)
+            if swatch = focused
+                current = index
+            end
+            index = index + 1
+        end
+
+        if current = -1
+            swatches:Get(0):Focus()
+            return now
+        end
+
+        integer target = current + columnChange + rowChange * columns
+        if target < 0 or target >= swatches:GetSize()
+            return now
+        end
+        swatches:Get(target):Focus()
+    end
+end
