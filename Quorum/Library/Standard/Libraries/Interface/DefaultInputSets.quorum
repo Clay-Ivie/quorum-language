@@ -1754,6 +1754,53 @@ InputSet shiftF10SetTextBox
 
         table:Add(focusCameraSet, focusCameraBehavior)
 
+        /*
+        3D camera orbit controls. Shift with the arrow keys orbits the camera around the
+        selected item (or the cursor if nothing is selected) one step per key press.
+        Shift + Control (Command on Mac) with up and down zooms in and out, and
+        Alt + Shift + F centers the camera on the selection again after panning.
+        */
+        CameraOrbitBehavior cameraOrbitLeftBehavior
+        CameraOrbitBehavior cameraOrbitRightBehavior
+        CameraOrbitBehavior cameraOrbitUpBehavior
+        CameraOrbitBehavior cameraOrbitDownBehavior
+        CameraZoomBehavior cameraZoomInBehavior
+        CameraZoomBehavior cameraZoomOutBehavior
+        CameraCenterOnSelectionBehavior cameraCenterOnSelectionBehavior
+
+        cameraOrbitLeftBehavior:SetOrbit(-15, 0)
+        cameraOrbitRightBehavior:SetOrbit(15, 0)
+        cameraOrbitUpBehavior:SetOrbit(0, 15)
+        cameraOrbitDownBehavior:SetOrbit(0, -15)
+        cameraZoomInBehavior:SetZoomFactor(1.0 / 1.25)
+        cameraZoomOutBehavior:SetZoomFactor(1.25)
+
+        InputSet cameraOrbitLeftSet = AddShiftModifier(GetLeftArrowKey())
+        InputSet cameraOrbitRightSet = AddShiftModifier(GetRightArrowKey())
+        InputSet cameraOrbitUpSet = AddShiftModifier(GetUpArrowKey())
+        InputSet cameraOrbitDownSet = AddShiftModifier(GetDownArrowKey())
+        InputSet cameraZoomInSet
+        InputSet cameraZoomOutSet
+        if ShouldUseMacKeys()
+            cameraZoomInSet = AddMetaModifier(AddShiftModifier(GetUpArrowKey()))
+            cameraZoomOutSet = AddMetaModifier(AddShiftModifier(GetDownArrowKey()))
+        else
+            cameraZoomInSet = AddControlModifier(AddShiftModifier(GetUpArrowKey()))
+            cameraZoomOutSet = AddControlModifier(AddShiftModifier(GetDownArrowKey()))
+        end
+        InputSet cameraCenterSet
+        cameraCenterSet:SetKeyboardInput(keys:F)
+        cameraCenterSet:AddModifier(cameraCenterSet:ALT)
+        cameraCenterSet:AddModifier(cameraCenterSet:SHIFT)
+
+        table:Add3D(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        table:Add3D(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        table:Add3D(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        table:Add3D(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        table:Add3D(cameraZoomInSet, cameraZoomInBehavior)
+        table:Add3D(cameraZoomOutSet, cameraZoomOutBehavior)
+        table:Add3D(cameraCenterSet, cameraCenterOnSelectionBehavior)
+
         // 2D camera set
         cameraItemTable2D:Add(reportLocation, reportLocationBehavior)
 
@@ -1807,6 +1854,15 @@ InputSet shiftF10SetTextBox
         cameraItemTable3D:Add(selectionCancelSet, selectionCancelBehavior)
 
         cameraItemTable3D:Add(focusPropertiesSet, focusPropertiesBehavior)
+
+        // 3D camera orbit controls while the camera item is focused
+        cameraItemTable3D:Add(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        cameraItemTable3D:Add(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        cameraItemTable3D:Add(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        cameraItemTable3D:Add(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        cameraItemTable3D:Add(cameraZoomInSet, cameraZoomInBehavior)
+        cameraItemTable3D:Add(cameraZoomOutSet, cameraZoomOutBehavior)
+        cameraItemTable3D:Add(cameraCenterSet, cameraCenterOnSelectionBehavior)
 
 
         // 3D selection table
@@ -1940,6 +1996,15 @@ InputSet shiftF10SetTextBox
         end
 
         selectionTable:Add(resetScaleSet, selectionResetScaleBehavior)
+
+        // 3D camera orbit controls while a 3D item is selected
+        selectionTable:Add(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        selectionTable:Add(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        selectionTable:Add(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        selectionTable:Add(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        selectionTable:Add(cameraZoomInSet, cameraZoomInBehavior)
+        selectionTable:Add(cameraZoomOutSet, cameraZoomOutBehavior)
+        selectionTable:Add(cameraCenterSet, cameraCenterOnSelectionBehavior)
 
         // 2D selection
         selectionTable2D:Add(reportLocation, reportLocationBehavior)

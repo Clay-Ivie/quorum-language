@@ -62,6 +62,7 @@ use Libraries.Interface.Controls.Scenes.Blueprints.ItemBlueprint
 use Libraries.Interface.Controls.Scenes.Blueprints.DrawableBlueprint
 use Libraries.Interface.Controls.Scenes.Items.CameraItem2D
 use Libraries.Interface.Controls.Scenes.Items.CameraItem3D
+use Libraries.Interface.Controls.Scenes.Items.EditorCamera3D
 use Libraries.Interface.Controls.Scenes.Items.EditorItem2D
 use Libraries.Interface.Controls.Scenes.Items.CameraItem
 use Libraries.Interface.Controls.Scenes.Items.EditorItem3D
@@ -479,6 +480,150 @@ class SceneEditor is Control, DefaultSceneManager
         else
             // Do nothing -- we currently don't support this for 2D
         end
+    end
+
+    /*
+        OrbitCamera rotates the camera of the selected 3D layer around the item it is targeting,
+        which is the selected item, or the cursor if no item is selected. The camera keeps looking
+        at the target while it moves. The new camera position is announced to screen readers.
+        This does nothing if the selected layer is not a 3D layer.
+
+        Attribute: Parameter yawChange How many degrees to orbit horizontally. Positive values move the camera to its right.
+        Attribute: Parameter pitchChange How many degrees to orbit vertically. Positive values raise the camera above the target.
+    */
+    action OrbitCamera(number yawChange, number pitchChange)
+        EditorCamera3D camera = GetSelectedEditorCamera3D()
+        if camera = undefined
+            return now
+        end
+
+        camera:Orbit(yawChange, pitchChange)
+        EditorCameraChanged()
+        AnnounceToFocusedItem(GetCameraOrbitDescription())
+    end
+
+    /*
+        ZoomCamera moves the camera of the selected 3D layer toward or away from the item it is
+        targeting by multiplying its distance by the given factor. Values less than 1 move the
+        camera closer, and values greater than 1 move it farther away. The new camera position
+        is announced to screen readers. This does nothing if the selected layer is not a 3D layer.
+
+        Attribute: Parameter factor The amount to multiply the camera's distance by.
+    */
+    action ZoomCamera(number factor)
+        EditorCamera3D camera = GetSelectedEditorCamera3D()
+        if camera = undefined
+            return now
+        end
+
+        number currentDistance = camera:GetDistance()
+        camera:ChangeDistance(currentDistance * factor - currentDistance)
+        EditorCameraChanged()
+        AnnounceToFocusedItem(GetCameraOrbitDescription())
+    end
+
+    /*
+        CenterCameraOnSelection makes the camera of the selected 3D layer orbit directly around
+        the selected item (or the cursor if no item is selected), removing any offset left by
+        panning or looking around. This does nothing if the selected layer is not a 3D layer.
+    */
+    action CenterCameraOnSelection
+        EditorCamera3D camera = GetSelectedEditorCamera3D()
+        if camera = undefined
+            return now
+        end
+
+        UpdateEditorCameraTarget()
+        camera:CenterOnTarget()
+        EditorCameraChanged()
+
+        Item3D cameraTarget = camera:GetTarget()
+        if cameraTarget = undefined
+            AnnounceToFocusedItem("There is nothing selected to center the camera on")
+        else
+            AnnounceToFocusedItem("Camera centered on " + GetCameraTargetName(cameraTarget) + ". " + GetCameraOrbitDescription())
+        end
+    end
+
+    /*
+        EditorCameraChanged should be called after the 3D editor camera is moved directly through
+        its EditorCamera3D (for example by mouse behaviors). It keeps the camera item and an open
+        camera properties dialog in sync with the camera.
+    */
+    action EditorCameraChanged
+        Item item = GetSelectedItem()
+        if item is CameraItem3D
+            CameraItem3D cameraItem = cast(CameraItem3D, item)
+            cameraItem:SetPosition(cameraItem:GetEditorCamera():GetPosition())
+            UpdateActivePropertiesDialog(cameraItem)
+        end
+    end
+
+    /*
+        Returns a description of the 3D editor camera's orbit, including what it is orbiting around,
+        its yaw and pitch in degrees, and its distance from what it is orbiting. If the selected layer
+        is not a 3D layer, this returns an empty text value.
+
+        Attribute: Returns A description of the camera's orbit suitable for a screen reader.
+    */
+    action GetCameraOrbitDescription returns text
+        EditorCamera3D camera = GetSelectedEditorCamera3D()
+        if camera = undefined
+            return ""
+        end
+
+        text orbitDescription = "Camera"
+        Item3D cameraTarget = camera:GetTarget()
+        if cameraTarget not= undefined
+            orbitDescription = "Orbiting " + GetCameraTargetName(cameraTarget)
+            if camera:IsOffsetFromTarget()
+                orbitDescription = orbitDescription + ", panned away from it"
+            end
+        end
+
+        text yawText = "" + math:Round(camera:GetYaw(), 1)
+        text pitchText = "" + math:Round(camera:GetPitch(), 1)
+        text distanceText = "" + math:Round(camera:GetDistance(), 2)
+        return orbitDescription + ". Yaw " + yawText + " degrees, pitch " + pitchText + " degrees, distance " + distanceText
+    end
+
+    /*
+        Returns the camera of the selected layer if it is a 3D layer, or undefined otherwise.
+    */
+    private action GetSelectedEditorCamera3D returns EditorCamera3D
+        EditorLayer layer = GetSelectedLayer()
+        if layer is EditorLayer3D
+            EditorLayer3D layer3D = cast(EditorLayer3D, layer)
+            return layer3D:GetEditorCamera()
+        end
+        return undefined
+    end
+
+    /*
+        Returns a name for the camera's target that can be read to the user.
+    */
+    private action GetCameraTargetName(Item3D cameraTarget) returns text
+        if cameraTarget is EditorCursor
+            return "the cursor"
+        end
+
+        text targetName = cameraTarget:GetName()
+        if targetName = ""
+            return "the selected item"
+        end
+        return targetName
+    end
+
+    /*
+        Sends a message to the screen reader using the currently focused item, or the Scene Editor
+        itself if nothing is focused.
+    */
+    private action AnnounceToFocusedItem(text message)
+        Item focusedItem = manager:GetFocus()
+        if focusedItem = undefined
+            focusedItem = me
+        end
+        NotifyAccessibility(focusedItem, message)
     end
 
     action GetFindDialog returns SceneEditorFindDialog

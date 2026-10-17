@@ -1,0 +1,42 @@
+package Libraries.Interface.Behaviors.Scenes.Camera
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Controls.Scenes.SceneEditor
+
+/*
+    CameraOrbitBehavior rotates the 3D Scene Editor camera around the item it is targeting,
+    which is the selected item, or the cursor if nothing is selected. Each time the behavior
+    runs, the camera moves by a fixed number of degrees and the new camera position is
+    announced to screen readers.
+
+    Attribute: Example
+
+    use Libraries.Interface.Behaviors.Scenes.Camera.CameraOrbitBehavior
+
+    CameraOrbitBehavior orbitRight
+    // Orbit 15 degrees to the right each time the behavior runs.
+    orbitRight:SetOrbit(15, 0)
+*/
+class CameraOrbitBehavior is SceneEditorCameraBehavior
+
+    number yawChange = 0
+    number pitchChange = 0
+
+    /*
+        Sets how far the camera orbits each time this behavior runs.
+
+        Attribute: Parameter yawChange Degrees to orbit horizontally. Positive values move the camera to its right.
+        Attribute: Parameter pitchChange Degrees to orbit vertically. Positive values raise the camera above the target.
+    */
+    action SetOrbit(number yawChange, number pitchChange)
+        me:yawChange = yawChange
+        me:pitchChange = pitchChange
+    end
+
+    action Run(BehaviorEvent event)
+        SceneEditor editor = GetSceneEditor(event)
+        if editor not= undefined
+            editor:OrbitCamera(yawChange, pitchChange)
+        end
+    end
+end

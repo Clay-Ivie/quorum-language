@@ -5,14 +5,35 @@ use Libraries.Interface.Item3D
 use Libraries.Compute.Matrix4
 use Libraries.Compute.Quaternion
 use Libraries.Compute.Vector3
+use Libraries.Compute.Math
 
 /*
     EditorCamera3D represents the PerspectiveCamera in a 3D scene that shows the objects in the 3D layer
     of the user's scene. This camera affects what is drawn when the game is ran which unlike the preview
     of an EditorLayer3D. The EditorCamera3D can be rotated like a 3D object and it can focus on a target
     in a 3D scene to make editing easier.
+
+    The camera is an orbit camera. It always looks at a pivot point from a set distance, and its yaw
+    and pitch describe where on that sphere around the pivot the camera sits. When the camera has a
+    target, the pivot is the target's position plus an optional offset (which is changed by panning),
+    so orbiting rotates the camera around the chosen object. When there is no target, the pivot stays
+    wherever it was last placed.
 */
 class EditorCamera3D is PerspectiveCamera
+
+    // The closest the camera is allowed to get to its pivot when zooming.
+    public constant number MINIMUM_DISTANCE = 0.5
+
+    /*
+    The largest pitch, in degrees, that orbiting or looking around can reach. Staying just short
+    of 90 degrees keeps the camera from looking straight up or down, where its "up" direction
+    and left/right directions become undefined.
+    */
+    public constant number MAXIMUM_ORBIT_PITCH = 89
+
+    // How far apart (in 3D units) the camera's real position can be from where the orbit state
+    // says it should be before the orbit state is rebuilt from the camera.
+    constant number SYNCHRONIZE_TOLERANCE = 0.001
 
     // The currently focused target. The camera tries to follow this.
     Item3D target = undefined
@@ -20,6 +41,11 @@ class EditorCamera3D is PerspectiveCamera
     // How far the camera tries to stay away from the focused object
     number distance = 10
 
+    // The point the camera orbits around and looks at.
+    Vector3 pivot
+
+    // How far the pivot has been moved (e.g. by panning) away from the target's position.
+    Vector3 targetOffset
     
     // A matrix storing the rotation component of the assigned yaw/pitch.
     Matrix4 rotationMatrix
@@ -36,6 +62,8 @@ class EditorCamera3D is PerspectiveCamera
     number pitch = 45
     number roll = 0
 
+    Math math
+
     on create
         calcQuaternion:SetEulerAngles(yaw, pitch, roll)
         rotationMatrix:Set(calcQuaternion)
@@ -48,12 +76,15 @@ class EditorCamera3D is PerspectiveCamera
         // The position stored in calcVector1 is transformed by our precomputed rotations and stored in calcVector2.
         rotationMatrix:TransformWorldCoordinate(calcVector1, calcVector2)
 
+        // The pivot starts at the origin, so the camera's position is just the rotated offset.
         SetPosition(calcVector2)
     end
 
     /*
         SetTarget updates the camera's position so that is pointed towards a 3D item in the scene.
-        The camera can not snap to itself so camera objects will be ignored. 
+        The camera can not snap to itself so camera objects will be ignored. When the target
+        changes to a different item, any panning offset from the previous target is cleared so
+        the camera orbits the new item directly.
 
         Attribute: Parameter target The 3D item the camera should focus on
     */
@@ -62,6 +93,10 @@ class EditorCamera3D is PerspectiveCamera
         // We ignore requests to target a CameraItem.
         if target is CameraItem
             return now
+        end
+
+        if target not= me:target
+            targetOffset:Set(0, 0, 0)
         end
 
         me:target = target
@@ -99,40 +134,289 @@ class EditorCamera3D is PerspectiveCamera
     end
 
     /*
+        Changes the distance between the camera and its pivot by the given amount, moving
+        the camera toward the pivot for negative values and away from it for positive values.
+        The distance will never go below MINIMUM_DISTANCE.
+
+        Attribute: Parameter amount How much to add to the current distance, in 3D units.
+    */
+    action ChangeDistance(number amount)
+        SynchronizeIfNeeded()
+
+        number newDistance = distance + amount
+        if newDistance < MINIMUM_DISTANCE
+            newDistance = MINIMUM_DISTANCE
+        end
+
+        SetDistance(newDistance)
+    end
+
+    /*
+        Orbit rotates the camera around its pivot. When the camera has a target this rotates
+        the camera around the targeted item while continuing to look at it. The pitch is
+        limited to between negative and positive MAXIMUM_ORBIT_PITCH.
+
+        Attribute: Parameter yawChange How many degrees to rotate around the vertical axis. Positive values move the camera to its right.
+        Attribute: Parameter pitchChange How many degrees to rotate up or down. Positive values raise the camera above the pivot.
+    */
+    action Orbit(number yawChange, number pitchChange)
+        SynchronizeIfNeeded()
+
+        yaw = NormalizeAngle(yaw + yawChange)
+        pitch = ClampPitch(pitch + pitchChange)
+        UpdateCameraRotation()
+    end
+
+    /*
+        LookAround turns the camera in place without moving it, like turning your head. Because
+        the camera always looks at its pivot, the pivot is moved to stay in front of the camera.
+        If the camera has a target, the pivot will now be offset from that target until the
+        target changes or CenterOnTarget is called.
+
+        Attribute: Parameter yawChange How many degrees to turn left or right. Positive values turn right.
+        Attribute: Parameter pitchChange How many degrees to tilt. Positive values tilt the camera downward.
+    */
+    action LookAround(number yawChange, number pitchChange)
+        SynchronizeIfNeeded()
+
+        Vector3 cameraPosition = GetPosition():Copy()
+
+        yaw = NormalizeAngle(yaw + yawChange)
+        pitch = ClampPitch(pitch + pitchChange)
+        RecalculateRotation()
+
+        // The camera is at pivot + offset, so to keep it in place the new pivot is position - offset.
+        CalculateOrbitOffset(calcVector2)
+        cameraPosition:Subtract(calcVector2)
+        SetPivot(cameraPosition)
+
+        UpdateCameraPosition()
+    end
+
+    /*
+        MovePivot shifts the point the camera orbits around (and the camera along with it) by the
+        given amount. This is used for panning. If the camera has a target, the pivot will now be
+        offset from that target until the target changes or CenterOnTarget is called.
+
+        Attribute: Parameter change How far to move the pivot in each direction.
+    */
+    action MovePivot(Vector3 change)
+        SynchronizeIfNeeded()
+
+        UpdatePivot()
+        calcVector1:Set(pivot)
+        calcVector1:Add(change)
+        SetPivot(calcVector1)
+
+        UpdateCameraPosition()
+    end
+
+    /*
+        CenterOnTarget removes any panning offset so the camera orbits directly around its target.
+        If there is no target, this does nothing.
+    */
+    action CenterOnTarget
+        if target = undefined
+            return now
+        end
+
+        targetOffset:Set(0, 0, 0)
+        UpdateCameraPosition()
+    end
+
+    /*
+        Returns a copy of the point the camera is currently orbiting around and looking at.
+
+        Attribute: Returns The pivot point of the camera.
+    */
+    action GetPivot returns Vector3
+        UpdatePivot()
+        return pivot:Copy()
+    end
+
+    /*
+        Returns true if the camera's pivot has been moved away from its target by panning
+        or looking around, or false if the camera orbits its target directly or has no target.
+
+        Attribute: Returns Whether the pivot is offset from the target.
+    */
+    action IsOffsetFromTarget returns boolean
+        if target = undefined
+            return false
+        end
+
+        return targetOffset:Length() > SYNCHRONIZE_TOLERANCE
+    end
+
+    /*
+        SynchronizeWithCamera rebuilds the orbit state (yaw, pitch, and pivot) from where the
+        camera actually is and the direction it is actually facing. This is useful if the
+        camera's position or direction was set directly (for example when a scene is loaded)
+        rather than through the orbit actions. The distance is kept as it was.
+    */
+    action SynchronizeWithCamera
+        calcVector1:Set(GetDirection())
+        calcVector1:Normalize()
+
+        number directionX = calcVector1:GetX()
+        number directionY = calcVector1:GetY()
+        number directionZ = calcVector1:GetZ()
+
+        // If the camera is looking (almost) straight up or down, the yaw can't be determined
+        // from the direction, so we keep the current yaw.
+        if directionX * directionX + directionZ * directionZ > 0.000001
+            yaw = math:RadiansToDegrees(math:InverseTangent(directionZ, directionX))
+        end
+
+        if directionY > 1
+            directionY = 1
+        elseif directionY < -1
+            directionY = -1
+        end
+        // The pitch is kept just short of straight up or down so the camera's "up" direction stays defined.
+        pitch = ClampPitch(-math:RadiansToDegrees(math:InverseSine(directionY)))
+
+        RecalculateRotation()
+
+        // The pivot is in front of the camera at the current distance.
+        calcVector2:Set(calcVector1)
+        calcVector2:Scale(distance)
+        calcVector2:Add(GetPosition())
+        SetPivot(calcVector2)
+
+        UpdateCameraPosition()
+    end
+
+    /*
         This actiopn takes the yaw, pitch, and roll to calculate the rotation matrix of the camera and
         rotates it properly.
     */
     private action UpdateCameraRotation
+        RecalculateRotation()
+        UpdateCameraPosition()
+    end
+
+    /*
+        Recalculates the rotation matrix and the camera's facing from the yaw, pitch, and roll
+        without changing the camera's position.
+    */
+    private action RecalculateRotation
         calcQuaternion:SetEulerAngles(yaw, pitch, roll)
         rotationMatrix:Set(calcQuaternion)
 
         // The raw values are used to position the camera in UpdateCameraPosition.
         // We pass the negative values here to make the camera look back at the focus position.
         SetYawPitchRoll(yaw, -pitch, roll)
-
-        UpdateCameraPosition()
     end
 
     /*
         UpdateCameraPosition repositions the camera so that it is positioned properly the set distance
-        away from the target and rotates to face it. If there is no target then this action does nothing
-        to the position.
+        away from its pivot and rotates to face it. If the camera has a target, the pivot is first
+        moved to follow the target.
     */
     action UpdateCameraPosition
-        if target = undefined
-            return now
-        end
+        UpdatePivot()
 
-        calcVector1:Set(0, 0, -distance)
-        calcVector2:Set(0, 0, 0)
-        // The position stored in calcVector1 is transformed by our precomputed rotations and stored in calcVector2.
-        rotationMatrix:TransformWorldCoordinate(calcVector1, calcVector2)
+        CalculateOrbitOffset(calcVector2)
 
-        calcVector1:Set(target:GetPosition())
+        calcVector1:Set(pivot)
         calcVector1:Add(calcVector2)
 
         SetPosition(calcVector1)
         Update()
+    end
+
+    /*
+        Stores the offset from the pivot to the camera's position in the given vector, based on
+        the current rotation and distance.
+    */
+    private action CalculateOrbitOffset(Vector3 result)
+        calcVector1:Set(0, 0, -distance)
+        result:Set(0, 0, 0)
+        // The position stored in calcVector1 is transformed by our precomputed rotations and stored in result.
+        rotationMatrix:TransformWorldCoordinate(calcVector1, result)
+    end
+
+    /*
+        If the camera has a target, moves the pivot to the target's position plus the offset.
+    */
+    private action UpdatePivot
+        if target not= undefined
+            pivot:Set(target:GetGlobalPosition())
+            pivot:Add(targetOffset)
+        end
+    end
+
+    /*
+        Places the pivot at the given point. If the camera has a target, this is stored as an
+        offset from the target so the pivot continues to follow the target as it moves.
+    */
+    private action SetPivot(Vector3 point)
+        if target not= undefined
+            targetOffset:Set(point)
+            targetOffset:Subtract(target:GetGlobalPosition())
+        end
+
+        pivot:Set(point)
+    end
+
+    /*
+        When the camera has no target, its position or direction may have been set directly
+        (for example by loading a scene) without updating the orbit state. If so, the orbit
+        state is rebuilt from the camera so orbiting starts from where the camera really is
+        instead of jumping. When the camera has a target, the target defines the orbit, so
+        nothing is changed.
+    */
+    private action SynchronizeIfNeeded
+        if target not= undefined
+            return now
+        end
+
+        CalculateOrbitOffset(calcVector2)
+        calcVector1:Set(pivot)
+        calcVector1:Add(calcVector2)
+        calcVector1:Subtract(GetPosition())
+
+        if calcVector1:Length() > SYNCHRONIZE_TOLERANCE
+            SynchronizeWithCamera()
+            return now
+        end
+
+        if distance <= 0
+            return now
+        end
+
+        // The camera should be facing the pivot, which is the opposite of the orbit offset.
+        calcVector2:Scale(-1.0 / distance)
+        calcVector2:Subtract(GetDirection())
+        if calcVector2:Length() > SYNCHRONIZE_TOLERANCE
+            SynchronizeWithCamera()
+        end
+    end
+
+    /*
+        Limits a pitch angle to between negative and positive MAXIMUM_ORBIT_PITCH.
+    */
+    private action ClampPitch(number value) returns number
+        if value > MAXIMUM_ORBIT_PITCH
+            return MAXIMUM_ORBIT_PITCH
+        elseif value < -MAXIMUM_ORBIT_PITCH
+            return -MAXIMUM_ORBIT_PITCH
+        end
+        return value
+    end
+
+    /*
+        Wraps an angle in degrees into the range greater than -180 and up to 180.
+    */
+    private action NormalizeAngle(number value) returns number
+        repeat while value > 180
+            value = value - 360
+        end
+        repeat while value <= -180
+            value = value + 360
+        end
+        return value
     end
 
     /*
