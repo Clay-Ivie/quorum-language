@@ -655,7 +655,7 @@ class ModelBuilderOpenGL
     built from primitive shapes. The head is a sphere, and the torso, arms,
     and legs are cylinders. Each body part is placed in its own Node so the
     parts can be positioned, and later posed, independently. The figure
-    stands on y = 0 and is centered on the x and z axes. The height
+    is centered on the origin, like the other primitive shapes. The height
     parameter scales the whole figure, and all parts use the provided
     Material.
     */
@@ -668,8 +668,10 @@ class ModelBuilderOpenGL
         number armLength = height * 0.35
         integer divisions = 16
 
-        number hipY = legLength
-        number shoulderY = legLength + torsoHeight
+        // Center the figure vertically on the origin, like the other primitives.
+        number baseY = -(legLength + torsoHeight + headSize) / 2
+        number hipY = baseY + legLength
+        number shoulderY = hipY + torsoHeight
         number legX = torsoWidth / 4
         number armX = torsoWidth / 2 + limbWidth / 2
 
@@ -695,11 +697,11 @@ class ModelBuilderOpenGL
         AddPart("rightArm", TRIANGLES, mask, material):BuildCylinder(limbWidth, armLength, limbWidth, divisions)
 
         Node leftLeg = AddNode()
-        leftLeg:translation:Set(-legX, legLength / 2, 0)
+        leftLeg:translation:Set(-legX, baseY + legLength / 2, 0)
         AddPart("leftLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
 
         Node rightLeg = AddNode()
-        rightLeg:translation:Set(legX, legLength / 2, 0)
+        rightLeg:translation:Set(legX, baseY + legLength / 2, 0)
         AddPart("rightLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
 
         return End()
@@ -723,5 +725,5 @@ class ModelBuilderOpenGL
 
         return CreateHuman(height, material)
     end
-    
+
 end

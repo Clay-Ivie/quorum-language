@@ -26,6 +26,7 @@ use Libraries.Compute.Vector4
 use Libraries.Game.Graphics.Models.Data.Animation
 use Libraries.Game.Graphics.Models.OpenGL.ModelResourcesOpenGL
 use Libraries.Game.Graphics.Models.OpenGL.ModelBlueprintOpenGL
+use Libraries.Game.Graphics.Models.OpenGL.ModelBuilderOpenGL
 use Libraries.Game.Graphics.Models.Data.AnimationState
 use Libraries.Game.Graphics.Models.Data.AnimationFrame
 use Libraries.Interface.Accessibility
@@ -1929,6 +1930,56 @@ based on its index.*/
     */
     action LoadSphere(number width, number height, number depth, Texture texture)
         LoadSphere(width, height, depth, 25, 16, texture)
+    end
+
+    /*
+    This action will load the Model with a humanoid figure of the given height
+    and color. The figure is built from primitive shapes: a sphere for the head,
+    and cylinders for the torso, arms, and legs. Each body part is its own node,
+    so parts can be positioned independently. Like the other primitive shapes,
+    the figure is centered on the origin. This action is currently only
+    supported when the game is using OpenGL.
+
+    Attribute: Parameter height How tall the figure should be along the y-axis.
+    Attribute: Parameter color What color the figure should be.
+
+    Attribute: Example
+
+    use Libraries.Game.Game
+    use Libraries.Game.Graphics.Model
+    use Libraries.Game.Graphics.Color
+
+    class Main is Game
+
+        Model person
+
+        action Main
+            StartGame()
+        end
+
+        action CreateGame
+            Color blue
+            blue:SetColor(0.2, 0.4, 0.9, 1)
+
+            person:LoadHuman(2, blue)
+            Add(person)
+        end
+    end
+    */
+    action LoadHuman(number height, Color color)
+        if not UsingOpenGL()
+            alert("LoadHuman is currently only supported when the game is using OpenGL.")
+        end
+
+        ModelBuilderOpenGL builder
+        Load(builder:CreateHuman(height, color))
+        SetDiffuseColor(color)
+
+        // The collision box surrounds the whole figure. These proportions
+        // match the ones used in ModelBuilderOpenGL:CreateHuman.
+        Box box
+        box:Set(height * 0.32, height * 0.95, height * 0.2)
+        SetShape(box)
     end
 
     /*
