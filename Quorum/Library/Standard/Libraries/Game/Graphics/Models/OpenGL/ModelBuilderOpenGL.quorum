@@ -649,5 +649,79 @@ class ModelBuilderOpenGL
 
         return CreateSphere(width, height, depth, divisionsU, divisionsV, TRIANGLES, material, mask)
     end
+
+    /*
+    This action will create a new ModelBlueprint with a humanoid figure
+    built from primitive shapes. The head is a sphere, and the torso, arms,
+    and legs are cylinders. Each body part is placed in its own Node so the
+    parts can be positioned, and later posed, independently. The figure
+    stands on y = 0 and is centered on the x and z axes. The height
+    parameter scales the whole figure, and all parts use the provided
+    Material.
+    */
+    action CreateHuman(number height, Material material) returns ModelBlueprintOpenGL
+        number headSize = height * 0.15
+        number torsoHeight = height * 0.35
+        number torsoWidth = height * 0.2
+        number limbWidth = height * 0.06
+        number legLength = height * 0.45
+        number armLength = height * 0.35
+        integer divisions = 16
+
+        number hipY = legLength
+        number shoulderY = legLength + torsoHeight
+        number legX = torsoWidth / 4
+        number armX = torsoWidth / 2 + limbWidth / 2
+
+        VertexAttributes attributes
+        integer mask = bits:Or(attributes:POSITION, attributes:NORMAL)
+
+        Begin()
+
+        Node head = AddNode()
+        head:translation:Set(0, shoulderY + headSize / 2, 0)
+        AddPart("head", TRIANGLES, mask, material):BuildSphere(headSize, headSize, headSize, divisions, divisions)
+
+        Node torso = AddNode()
+        torso:translation:Set(0, hipY + torsoHeight / 2, 0)
+        AddPart("torso", TRIANGLES, mask, material):BuildCylinder(torsoWidth, torsoHeight, torsoWidth, divisions)
+
+        Node leftArm = AddNode()
+        leftArm:translation:Set(-armX, shoulderY - armLength / 2, 0)
+        AddPart("leftArm", TRIANGLES, mask, material):BuildCylinder(limbWidth, armLength, limbWidth, divisions)
+
+        Node rightArm = AddNode()
+        rightArm:translation:Set(armX, shoulderY - armLength / 2, 0)
+        AddPart("rightArm", TRIANGLES, mask, material):BuildCylinder(limbWidth, armLength, limbWidth, divisions)
+
+        Node leftLeg = AddNode()
+        leftLeg:translation:Set(-legX, legLength / 2, 0)
+        AddPart("leftLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
+
+        Node rightLeg = AddNode()
+        rightLeg:translation:Set(legX, legLength / 2, 0)
+        AddPart("rightLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
+
+        return End()
+    end
+
+    /*
+    This action will create a humanoid figure with the given height, colored
+    with a single diffuse color matching the provided Color object.
+    */
+    action CreateHuman(number height, Color color) returns ModelBlueprintOpenGL
+        Material material
+        ColorAttribute attribute
+        attribute:SetAttribute(attribute:GetDiffuseValue(), color)
+        material:Add(attribute)
+
+        if color:GetAlpha() < 1.0
+            BlendingAttribute blend
+            blend:opacity = color:GetAlpha()
+            material:Add(blend)
+        end
+
+        return CreateHuman(height, material)
+    end
     
 end
