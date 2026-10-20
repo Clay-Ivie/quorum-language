@@ -538,14 +538,23 @@ action Update(number seconds)
         Camera camera = GetSelectedLayer():GetCamera()
 
         if GetSelectedLayer() is EditorLayer3D
-            Vector3 cameraPosition = camera:GetPosition()
+            EditorCursor3D cursor3D = cast(EditorCursor3D, GetCursor())
 
             // round coordinates
-            number camX = math:Round(cameraPosition:GetX(), 1)
-            number camY = math:Round(cameraPosition:GetY(), 1)
-            number camZ = math:Round(cameraPosition:GetZ(), 1)
+            number camX = math:Round(cursor3D:GetX(), 1)
+            number camY = math:Round(cursor3D:GetY(), 1)
+            number camZ = math:Round(cursor3D:GetZ(), 1)
 
             cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY + "  Z: " + camZ)
+        end
+
+        if GetSelectedLayer() is EditorLayer2D
+            EditorCursor2D cursor2D = cast(EditorCursor2D, GetCursor())
+
+            number camX = math:Round(cursor2D:GetX(), 1)
+            number camY = math:Round(cursor2D:GetY(), 1)
+
+            cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY)
         end
 
         UpdateCoordinatesPosition()
