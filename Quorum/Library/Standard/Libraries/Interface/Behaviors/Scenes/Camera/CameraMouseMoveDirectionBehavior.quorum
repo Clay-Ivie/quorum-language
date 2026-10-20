@@ -10,15 +10,55 @@ use Libraries.Compute.Math
 
 /*
     CameraMouseMoveDirectionBehavior rotates the 3D Scene Editor camera with the mouse.
-    Dragging with the right mouse button turns the camera in place to look around.
-    Dragging with the middle mouse button orbits the camera around the item it is
-    targeting, which is the selected item, or the cursor if nothing is selected.
+    It can either turn the camera in place to look around, or orbit the camera around
+    the item it is targeting, which is the selected item, or the cursor if nothing is
+    selected.
+
+    Which of the two happens is chosen with SetMode. By default (BY_BUTTON), dragging
+    with the right mouse button looks around and dragging with the middle mouse button
+    orbits. The LOOK_AROUND and ORBIT modes always do one or the other regardless of
+    the button, which lets a modifier key combined with a left click drag perform them
+    on mice and trackpads without easy access to a right or middle button.
+
+    Attribute: Example
+
+    use Libraries.Interface.Behaviors.Scenes.Camera.CameraMouseMoveDirectionBehavior
+
+    CameraMouseMoveDirectionBehavior orbitBehavior
+    orbitBehavior:SetMode(orbitBehavior:ORBIT)
 */
 class CameraMouseMoveDirectionBehavior is Behavior
     Math math
 
     // How far the camera rotates, in radians, for each pixel the mouse moves.
     constant number SENSITIVITY = 0.002
+
+    // Look around with the right button and orbit with the middle button.
+    public constant integer BY_BUTTON = 0
+    // Always turn the camera in place, whichever button is dragging.
+    public constant integer LOOK_AROUND = 1
+    // Always orbit the camera around its target, whichever button is dragging.
+    public constant integer ORBIT = 2
+
+    integer mode = BY_BUTTON
+
+    /*
+        Sets whether this behavior looks around, orbits, or chooses based on the mouse button.
+
+        Attribute: Parameter mode One of BY_BUTTON, LOOK_AROUND or ORBIT.
+    */
+    action SetMode(integer mode)
+        me:mode = mode
+    end
+
+    /*
+        Returns whether this behavior looks around, orbits, or chooses based on the mouse button.
+
+        Attribute: Returns One of BY_BUTTON, LOOK_AROUND or ORBIT.
+    */
+    action GetMode returns integer
+        return mode
+    end
 
     action Run(BehaviorEvent event)
         if not (event:GetItem() is SceneEditor)
@@ -39,18 +79,28 @@ class CameraMouseMoveDirectionBehavior is Behavior
             return now
         end
 
+        integer movement = mode
+        if movement = BY_BUTTON
+            if mouseEvent:mouseButton = mouseEvent:RIGHT
+                movement = LOOK_AROUND
+            elseif mouseEvent:mouseButton = mouseEvent:MIDDLE
+                movement = ORBIT
+            else
+                return now
+            end
+        end
+
         EditorLayer3D layer = cast(EditorLayer3D, editor:GetSelectedLayer())
         EditorCamera3D camera = layer:GetEditorCamera()
 
         number yawChange = math:RadiansToDegrees(mouseEvent:GetMovementX() * SENSITIVITY)
         number pitchChange = math:RadiansToDegrees(mouseEvent:GetMovementY() * SENSITIVITY)
 
-        if mouseEvent:mouseButton = mouseEvent:RIGHT
+        if movement = LOOK_AROUND
             camera:LookAround(yawChange, -pitchChange)
-            editor:EditorCameraChanged()
-        elseif mouseEvent:mouseButton = mouseEvent:MIDDLE
+        else
             camera:Orbit(yawChange, pitchChange)
-            editor:EditorCameraChanged()
         end
+        editor:EditorCameraChanged()
     end
 end

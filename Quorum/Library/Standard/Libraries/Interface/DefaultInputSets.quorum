@@ -1669,6 +1669,46 @@ InputSet shiftF10SetTextBox
         table:Add3D(mouseScroll, cameraMousePanBehavior)
         table:Add3D(mouseShiftMiddleMouseMoveStart, cameraMousePanBehavior)
         table:Add3D(mouseShiftMiddleMouseMove, cameraMousePanBehavior)
+
+        /*
+        3D camera mouse controls that only need the left button, for mice and trackpads
+        where the right and middle buttons are hard or impossible to use, such as the
+        Apple Magic Mouse. These follow the convention of 3D tools that emulate a three
+        button mouse:
+            Alt (Option on Mac) + left drag orbits around the selection.
+            Alt + Shift + left drag pans.
+            Alt + Control (Alt + Command on Mac) + left drag turns the camera in place.
+        The right and middle button controls above keep working as well.
+        */
+        CameraMouseMoveDirectionBehavior cameraMouseOrbitBehavior
+        cameraMouseOrbitBehavior:SetMode(cameraMouseOrbitBehavior:ORBIT)
+        CameraMouseMoveDirectionBehavior cameraMouseLookAroundBehavior
+        cameraMouseLookAroundBehavior:SetMode(cameraMouseLookAroundBehavior:LOOK_AROUND)
+
+        InputSet altLeftDrag
+        altLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        altLeftDrag:SetInputTrigger(altLeftDrag:CONTINUE)
+        AddAltModifier(altLeftDrag)
+
+        InputSet altShiftLeftDrag
+        altShiftLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        altShiftLeftDrag:SetInputTrigger(altShiftLeftDrag:CONTINUE)
+        AddAltModifier(altShiftLeftDrag)
+        AddShiftModifier(altShiftLeftDrag)
+
+        InputSet lookAroundLeftDrag
+        lookAroundLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        lookAroundLeftDrag:SetInputTrigger(lookAroundLeftDrag:CONTINUE)
+        AddAltModifier(lookAroundLeftDrag)
+        if ShouldUseMacKeys()
+            AddMetaModifier(lookAroundLeftDrag)
+        else
+            AddControlModifier(lookAroundLeftDrag)
+        end
+
+        table:Add3D(altLeftDrag, cameraMouseOrbitBehavior)
+        table:Add3D(altShiftLeftDrag, cameraMousePanBehavior)
+        table:Add3D(lookAroundLeftDrag, cameraMouseLookAroundBehavior)
         
 
         InputSet selectionMoveLeft2DStart = GetLeftArrowKey()
