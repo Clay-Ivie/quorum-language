@@ -681,28 +681,54 @@ class ModelBuilderOpenGL
         Begin()
 
         Node head = AddNode()
+        head:id = "head"
         head:translation:Set(0, shoulderY + headSize / 2, 0)
         AddPart("head", TRIANGLES, mask, material):BuildSphere(headSize, headSize, headSize, divisions, divisions)
 
         Node torso = AddNode()
+        torso:id = "torso"
         torso:translation:Set(0, hipY + torsoHeight / 2, 0)
         AddPart("torso", TRIANGLES, mask, material):BuildCylinder(torsoWidth, torsoHeight, torsoWidth, divisions)
 
+        // Each limb's node sits at its joint (the shoulder or hip), and the
+        // limb's mesh is shifted down so it hangs from that joint. Rotating a
+        // limb's node then swings the limb from the joint, not from its middle.
+        Matrix4 armOffset
+        armOffset:SetToTranslation(0, -armLength / 2, 0)
+        Matrix4 legOffset
+        legOffset:SetToTranslation(0, -legLength / 2, 0)
+
         Node leftArm = AddNode()
-        leftArm:translation:Set(-armX, shoulderY - armLength / 2, 0)
-        AddPart("leftArm", TRIANGLES, mask, material):BuildCylinder(limbWidth, armLength, limbWidth, divisions)
+        leftArm:id = "leftArm"
+        leftArm:translation:Set(-armX, shoulderY, 0)
+        MeshBuilder leftArmMesh = AddPart("leftArm", TRIANGLES, mask, material)
+        leftArmMesh:SetVertexTransform(armOffset)
+        leftArmMesh:BuildCylinder(limbWidth, armLength, limbWidth, divisions)
 
         Node rightArm = AddNode()
-        rightArm:translation:Set(armX, shoulderY - armLength / 2, 0)
-        AddPart("rightArm", TRIANGLES, mask, material):BuildCylinder(limbWidth, armLength, limbWidth, divisions)
+        rightArm:id = "rightArm"
+        rightArm:translation:Set(armX, shoulderY, 0)
+        MeshBuilder rightArmMesh = AddPart("rightArm", TRIANGLES, mask, material)
+        rightArmMesh:SetVertexTransform(armOffset)
+        rightArmMesh:BuildCylinder(limbWidth, armLength, limbWidth, divisions)
 
         Node leftLeg = AddNode()
-        leftLeg:translation:Set(-legX, baseY + legLength / 2, 0)
-        AddPart("leftLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
+        leftLeg:id = "leftLeg"
+        leftLeg:translation:Set(-legX, hipY, 0)
+        MeshBuilder leftLegMesh = AddPart("leftLeg", TRIANGLES, mask, material)
+        leftLegMesh:SetVertexTransform(legOffset)
+        leftLegMesh:BuildCylinder(limbWidth, legLength, limbWidth, divisions)
 
         Node rightLeg = AddNode()
-        rightLeg:translation:Set(legX, baseY + legLength / 2, 0)
-        AddPart("rightLeg", TRIANGLES, mask, material):BuildCylinder(limbWidth, legLength, limbWidth, divisions)
+        rightLeg:id = "rightLeg"
+        rightLeg:translation:Set(legX, hipY, 0)
+        MeshBuilder rightLegMesh = AddPart("rightLeg", TRIANGLES, mask, material)
+        rightLegMesh:SetVertexTransform(legOffset)
+        rightLegMesh:BuildCylinder(limbWidth, legLength, limbWidth, divisions)
+
+        // The MeshBuilder is reused between parts, so turn the shift off again
+        // so it doesn't affect any shape built after this one.
+        rightLegMesh:SetVertexTransformationEnabled(false)
 
         return End()
     end
