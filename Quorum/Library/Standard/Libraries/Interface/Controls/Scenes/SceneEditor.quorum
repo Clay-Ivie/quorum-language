@@ -81,6 +81,7 @@ use Libraries.Interface.Controls.Scenes.Dialogs.PointLightPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.Audio3DPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.PropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.SceneEditorFindDialog
+use Libraries.Game.Graphics.Label
 
 
 /*
@@ -108,6 +109,8 @@ class SceneEditor is Control, DefaultSceneManager
     Array<SceneEditorChangeListener> sceneEditorChangeListeners
 
     SceneEditorEditManager editManager
+
+    Label cameraCoordinatesLabel
 
     // The rotational speed measured in degrees,
     // and the directional speed, measured in 3D world units.
@@ -199,6 +202,14 @@ class SceneEditor is Control, DefaultSceneManager
         LabelBoxView view
         view:Initialize(color:CustomColor(0.9, 0.9, 0.925, 1), color:CustomColor(0.9, 0.9, 0.925, 1))
         SetView2D(view)
+
+        Label newCameraCoordinatesLabel
+        cameraCoordinatesLabel = newCameraCoordinatesLabel
+        cameraCoordinatesLabel:SetText("X: 0.0  Y: 0.0  Z: 0.0")
+        cameraCoordinatesLabel:SetSize(16)
+        cameraCoordinatesLabel:SetColor(color:White())
+
+        Add(cameraCoordinatesLabel)
 
         SetInputGroup("SceneEditor")
         SetName("Scene Editor")
@@ -502,6 +513,18 @@ action Update(number seconds)
         end
 
         Camera camera = GetSelectedLayer():GetCamera()
+
+        if GetSelectedLayer() is EditorLayer3D
+            Vector3 cameraPosition = camera:GetPosition()
+
+            // round coordinates
+            number camX = math:Round(cameraPosition:GetX(), 1)
+            number camY = math:Round(cameraPosition:GetY(), 1)
+            number camZ = math:Round(cameraPosition:GetZ(), 1)
+            
+            cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY + "  Z: " + camZ)
+        end
+
         boolean moved = false
         boolean isCursor = false
         Item movedItem = undefined
