@@ -551,8 +551,8 @@ action Update(number seconds)
         if GetSelectedLayer() is EditorLayer2D
             EditorCursor2D cursor2D = cast(EditorCursor2D, GetCursor())
 
-            number camX = math:Round(cursor2D:GetX(), 1)
-            number camY = math:Round(cursor2D:GetY(), 1)
+            number camX = math:Round(cursor2D:GetX(), 1) / 32
+            number camY = math:Round(cursor2D:GetY(), 1) / 32
 
             cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY)
         end
