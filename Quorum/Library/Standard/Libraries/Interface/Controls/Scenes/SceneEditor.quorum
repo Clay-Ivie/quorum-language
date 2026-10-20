@@ -111,6 +111,7 @@ class SceneEditor is Control, DefaultSceneManager
     SceneEditorEditManager editManager
 
     Label cameraCoordinatesLabel
+    Control cameraCoordinatesPanel
 
     // The rotational speed measured in degrees,
     // and the directional speed, measured in 3D world units.
@@ -207,9 +208,27 @@ class SceneEditor is Control, DefaultSceneManager
         cameraCoordinatesLabel = newCameraCoordinatesLabel
         cameraCoordinatesLabel:SetText("X: 0.0  Y: 0.0  Z: 0.0")
         cameraCoordinatesLabel:SetSize(16)
-        cameraCoordinatesLabel:SetColor(color:White())
+        cameraCoordinatesLabel:SetColor(color:Black())
+        cameraCoordinatesLabel:SetLeftMargin(8)
+        cameraCoordinatesLabel:SetRightMargin(8)
+        cameraCoordinatesLabel:SetTopMargin(4)
+        cameraCoordinatesLabel:SetBottomMargin(4)
 
-        Add(cameraCoordinatesLabel)
+        LabelBoxView coordinatesBox
+        coordinatesBox:SetBorderThickness(0)
+        coordinatesBox:SetBorderStyle(coordinatesBox:ALL)
+        coordinatesBox:Initialize(color:White(), color:Black())
+
+        Control coordinatesPanel
+        cameraCoordinatesPanel = coordinatesPanel
+        FlowLayout coordinatesLayout
+        coordinatesPanel:SetLayout(coordinatesLayout)
+        coordinatesPanel:SetHorizontalLayoutMode(coordinatesPanel:FIT_CONTENTS)
+        coordinatesPanel:SetVerticalLayoutMode(coordinatesPanel:FIT_CONTENTS)
+        coordinatesPanel:SetView2D(coordinatesBox)
+
+        coordinatesPanel:Add(cameraCoordinatesLabel)
+        Add(cameraCoordinatesPanel)
 
         SetInputGroup("SceneEditor")
         SetName("Scene Editor")
@@ -521,7 +540,7 @@ action Update(number seconds)
             number camX = math:Round(cameraPosition:GetX(), 1)
             number camY = math:Round(cameraPosition:GetY(), 1)
             number camZ = math:Round(cameraPosition:GetZ(), 1)
-            
+
             cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY + "  Z: " + camZ)
         end
 
