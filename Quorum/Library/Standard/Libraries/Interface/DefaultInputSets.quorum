@@ -1633,6 +1633,70 @@ InputSet shiftF10SetTextBox
         table:Add3D(selectionMoveForward3DStop, selectionStopMovingZBehavior)
         table:Add3D(selectionMoveBackward3DStart, selectionStartMovingBackwardBehavior)
         table:Add3D(selectionMoveBackward3DStop, selectionStopMovingZBehavior)
+
+        /*
+        Holding Shift with any selection movement key moves the selection at twice
+        the normal speed, or two grid cells at a time when snapping to the grid:
+            Shift + arrow keys: fast left, right, forward and backward in 3D
+            Shift + Control + Up/Down (Shift + Command on Mac): fast vertical in 3D
+        Releasing the arrow key stops the movement, through the stop behaviors above.
+        */
+        SelectionXDirectionBehavior selectionStartMovingLeftFastBehavior
+        selectionStartMovingLeftFastBehavior:SetDirection(-2)
+        SelectionXDirectionBehavior selectionStartMovingRightFastBehavior
+        selectionStartMovingRightFastBehavior:SetDirection(2)
+        SelectionYDirectionBehavior selectionStartMovingUpFastBehavior
+        selectionStartMovingUpFastBehavior:SetDirection(2)
+        SelectionYDirectionBehavior selectionStartMovingDownFastBehavior
+        selectionStartMovingDownFastBehavior:SetDirection(-2)
+        SelectionZDirectionBehavior selectionStartMovingForwardFastBehavior
+        selectionStartMovingForwardFastBehavior:SetDirection(2)
+        SelectionZDirectionBehavior selectionStartMovingBackwardFastBehavior
+        selectionStartMovingBackwardFastBehavior:SetDirection(-2)
+
+        InputSet selectionMoveLeftFast3DStart = AddShiftModifier(GetLeftArrowKey())
+        InputSet selectionMoveLeftFast3DStop = AddShiftModifier(GetLeftArrowKey())
+        selectionMoveLeftFast3DStop:SetInputTrigger(selectionMoveLeftFast3DStop:FINISH)
+        InputSet selectionMoveRightFast3DStart = AddShiftModifier(GetRightArrowKey())
+        InputSet selectionMoveRightFast3DStop = AddShiftModifier(GetRightArrowKey())
+        selectionMoveRightFast3DStop:SetInputTrigger(selectionMoveRightFast3DStop:FINISH)
+        InputSet selectionMoveForwardFast3DStart = AddShiftModifier(GetUpArrowKey())
+        InputSet selectionMoveForwardFast3DStop = AddShiftModifier(GetUpArrowKey())
+        selectionMoveForwardFast3DStop:SetInputTrigger(selectionMoveForwardFast3DStop:FINISH)
+        InputSet selectionMoveBackwardFast3DStart = AddShiftModifier(GetDownArrowKey())
+        InputSet selectionMoveBackwardFast3DStop = AddShiftModifier(GetDownArrowKey())
+        selectionMoveBackwardFast3DStop:SetInputTrigger(selectionMoveBackwardFast3DStop:FINISH)
+
+        InputSet selectionMoveUpFast3DStart
+        InputSet selectionMoveUpFast3DStop
+        InputSet selectionMoveDownFast3DStart
+        InputSet selectionMoveDownFast3DStop
+        if ShouldUseMacKeys()
+            selectionMoveUpFast3DStart = AddShiftModifier(AddMetaModifier(GetUpArrowKey()))
+            selectionMoveUpFast3DStop = AddShiftModifier(AddMetaModifier(GetUpArrowKey()))
+            selectionMoveDownFast3DStart = AddShiftModifier(AddMetaModifier(GetDownArrowKey()))
+            selectionMoveDownFast3DStop = AddShiftModifier(AddMetaModifier(GetDownArrowKey()))
+        else
+            selectionMoveUpFast3DStart = AddShiftModifier(AddControlModifier(GetUpArrowKey()))
+            selectionMoveUpFast3DStop = AddShiftModifier(AddControlModifier(GetUpArrowKey()))
+            selectionMoveDownFast3DStart = AddShiftModifier(AddControlModifier(GetDownArrowKey()))
+            selectionMoveDownFast3DStop = AddShiftModifier(AddControlModifier(GetDownArrowKey()))
+        end
+        selectionMoveUpFast3DStop:SetInputTrigger(selectionMoveUpFast3DStop:FINISH)
+        selectionMoveDownFast3DStop:SetInputTrigger(selectionMoveDownFast3DStop:FINISH)
+
+        table:Add3D(selectionMoveLeftFast3DStart, selectionStartMovingLeftFastBehavior)
+        table:Add3D(selectionMoveLeftFast3DStop, selectionStopMovingXBehavior)
+        table:Add3D(selectionMoveRightFast3DStart, selectionStartMovingRightFastBehavior)
+        table:Add3D(selectionMoveRightFast3DStop, selectionStopMovingXBehavior)
+        table:Add3D(selectionMoveForwardFast3DStart, selectionStartMovingForwardFastBehavior)
+        table:Add3D(selectionMoveForwardFast3DStop, selectionStopMovingZBehavior)
+        table:Add3D(selectionMoveBackwardFast3DStart, selectionStartMovingBackwardFastBehavior)
+        table:Add3D(selectionMoveBackwardFast3DStop, selectionStopMovingZBehavior)
+        table:Add3D(selectionMoveUpFast3DStart, selectionStartMovingUpFastBehavior)
+        table:Add3D(selectionMoveUpFast3DStop, selectionStopMovingYBehavior)
+        table:Add3D(selectionMoveDownFast3DStart, selectionStartMovingDownFastBehavior)
+        table:Add3D(selectionMoveDownFast3DStop, selectionStopMovingYBehavior)
         
         InputSet rightClickMove
         rightClickMove:SetMouseMovementInput(mouse:RIGHT)
@@ -1698,6 +1762,29 @@ InputSet shiftF10SetTextBox
         table:Add2D(selectionMoveUp2DStop, selectionStopMovingYBehavior)
         table:Add2D(selectionMoveDown2DStart, selectionStartMovingDownBehavior)
         table:Add2D(selectionMoveDown2DStop, selectionStopMovingYBehavior)
+
+        // Holding Shift while pressing the arrow keys moves the 2D selection at twice the normal speed.
+        InputSet selectionMoveLeftFast2DStart = AddShiftModifier(GetLeftArrowKey())
+        InputSet selectionMoveLeftFast2DStop = AddShiftModifier(GetLeftArrowKey())
+        selectionMoveLeftFast2DStop:SetInputTrigger(selectionMoveLeftFast2DStop:FINISH)
+        InputSet selectionMoveRightFast2DStart = AddShiftModifier(GetRightArrowKey())
+        InputSet selectionMoveRightFast2DStop = AddShiftModifier(GetRightArrowKey())
+        selectionMoveRightFast2DStop:SetInputTrigger(selectionMoveRightFast2DStop:FINISH)
+        InputSet selectionMoveUpFast2DStart = AddShiftModifier(GetUpArrowKey())
+        InputSet selectionMoveUpFast2DStop = AddShiftModifier(GetUpArrowKey())
+        selectionMoveUpFast2DStop:SetInputTrigger(selectionMoveUpFast2DStop:FINISH)
+        InputSet selectionMoveDownFast2DStart = AddShiftModifier(GetDownArrowKey())
+        InputSet selectionMoveDownFast2DStop = AddShiftModifier(GetDownArrowKey())
+        selectionMoveDownFast2DStop:SetInputTrigger(selectionMoveDownFast2DStop:FINISH)
+
+        table:Add2D(selectionMoveLeftFast2DStart, selectionStartMovingLeftFastBehavior)
+        table:Add2D(selectionMoveLeftFast2DStop, selectionStopMovingXBehavior)
+        table:Add2D(selectionMoveRightFast2DStart, selectionStartMovingRightFastBehavior)
+        table:Add2D(selectionMoveRightFast2DStop, selectionStopMovingXBehavior)
+        table:Add2D(selectionMoveUpFast2DStart, selectionStartMovingUpFastBehavior)
+        table:Add2D(selectionMoveUpFast2DStop, selectionStopMovingYBehavior)
+        table:Add2D(selectionMoveDownFast2DStart, selectionStartMovingDownFastBehavior)
+        table:Add2D(selectionMoveDownFast2DStop, selectionStopMovingYBehavior)
 
         InputSet toggleGridInput
         InputSet increaseGridUnitInput

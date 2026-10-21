@@ -653,20 +653,38 @@ action Update(number seconds)
         
                                 if selectionXDirection < 0
                                     x = layer:GetPreviousGridCoordinate(x)
+                                    if selectionXDirection < -1
+                                        x = layer:GetPreviousGridCoordinate(x)
+                                    end
                                 elseif selectionXDirection > 0
                                     x = layer:GetNextGridCoordinate(x)
+                                    if selectionXDirection > 1
+                                        x = layer:GetNextGridCoordinate(x)
+                                    end
                                 end
         
                                 if selectionYDirection < 0
                                     y = layer:GetPreviousGridCoordinate(y)
+                                    if selectionYDirection < -1
+                                        y = layer:GetPreviousGridCoordinate(y)
+                                    end
                                 elseif selectionYDirection > 0
                                     y = layer:GetNextGridCoordinate(y)
+                                    if selectionYDirection > 1
+                                        y = layer:GetNextGridCoordinate(y)
+                                    end
                                 end
         
                                 if selectionZDirection < 0
                                     z = layer:GetPreviousGridCoordinate(z)
+                                    if selectionZDirection < -1
+                                        z = layer:GetPreviousGridCoordinate(z)
+                                    end
                                 elseif selectionZDirection > 0
                                     z = layer:GetNextGridCoordinate(z)
+                                    if selectionZDirection > 1
+                                        z = layer:GetNextGridCoordinate(z)
+                                    end
                                 end
         
                                 number deltaX = x - focus:GetGlobalX()
@@ -764,14 +782,26 @@ action Update(number seconds)
     
                             if selectionXDirection < 0
                                 x = layer:GetPreviousGridCoordinate(x)
+                                if selectionXDirection < -1
+                                    x = layer:GetPreviousGridCoordinate(x)
+                                end
                             elseif selectionXDirection > 0
                                 x = layer:GetNextGridCoordinate(x)
+                                if selectionXDirection > 1
+                                    x = layer:GetNextGridCoordinate(x)
+                                end
                             end
     
                             if selectionYDirection < 0
                                 y = layer:GetPreviousGridCoordinate(y)
+                                if selectionYDirection < -1
+                                    y = layer:GetPreviousGridCoordinate(y)
+                                end
                             elseif selectionYDirection > 0
                                 y = layer:GetNextGridCoordinate(y)
+                                if selectionYDirection > 1
+                                    y = layer:GetNextGridCoordinate(y)
+                                end
                             end
     
                             target:Move(x - target:GetGlobalX(), y - target:GetGlobalY())
