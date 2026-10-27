@@ -11,7 +11,8 @@ use Libraries.Interface.Behaviors.Behavior
 */
 class SelectionYDirectionBehavior is Behavior
 
-    // The direction value must always be -1, 0, or 1.
+    // The direction value must always be -2, -1, 0, 1, or 2. A magnitude of 2
+    // moves at twice the normal speed (Shift + arrow key).
     integer direction = 0
 
     action SetDirection(integer direction)

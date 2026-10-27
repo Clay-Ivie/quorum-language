@@ -26,6 +26,8 @@ use Libraries.Compute.Vector4
 use Libraries.Game.Graphics.Models.Data.Animation
 use Libraries.Game.Graphics.Models.OpenGL.ModelResourcesOpenGL
 use Libraries.Game.Graphics.Models.OpenGL.ModelBlueprintOpenGL
+use Libraries.Game.Graphics.Models.OpenGL.ModelBuilderOpenGL
+use Libraries.Game.Graphics.Models.OpenGL.Node
 use Libraries.Game.Graphics.Models.Data.AnimationState
 use Libraries.Game.Graphics.Models.Data.AnimationFrame
 use Libraries.Interface.Accessibility
@@ -1929,6 +1931,117 @@ based on its index.*/
     */
     action LoadSphere(number width, number height, number depth, Texture texture)
         LoadSphere(width, height, depth, 25, 16, texture)
+    end
+
+    /*
+    This action will load the Model with a humanoid figure of the given height
+    and color. The figure is built from primitive shapes: a sphere for the head,
+    and cylinders for the torso, arms, and legs. Each body part is its own node,
+    so parts can be positioned independently. Like the other primitive shapes,
+    the figure is centered on the origin. This action is currently only
+    supported when the game is using OpenGL.
+
+    Attribute: Parameter height How tall the figure should be along the y-axis.
+    Attribute: Parameter color What color the figure should be.
+
+    Attribute: Example
+
+    use Libraries.Game.Game
+    use Libraries.Game.Graphics.Model
+    use Libraries.Game.Graphics.Color
+
+    class Main is Game
+
+        Model person
+
+        action Main
+            StartGame()
+        end
+
+        action CreateGame
+            Color blue
+            blue:SetColor(0.2, 0.4, 0.9, 1)
+
+            person:LoadHuman(2, blue)
+            Add(person)
+        end
+    end
+    */
+    action LoadHuman(number height, Color color)
+        if not UsingOpenGL()
+            alert("LoadHuman is currently only supported when the game is using OpenGL.")
+        end
+
+        ModelBuilderOpenGL builder
+        Load(builder:CreateHuman(height, color))
+        SetDiffuseColor(color)
+
+        // The collision box surrounds the whole figure. These proportions
+        // match the ones used in ModelBuilderOpenGL:CreateHuman.
+        Box box
+        box:Set(height * 0.32, height * 0.95, height * 0.2)
+        SetShape(box)
+    end
+
+    /*
+    This action rotates one limb of a Model that was loaded with LoadHuman.
+    Each limb swings from its joint: arms rotate at the shoulder, and legs
+    rotate at the hip. The rotation replaces the limb's previous rotation, so
+    passing 0 for both angles returns the limb to its starting position.
+
+    Attribute: Parameter limb The limb to rotate: leftArm, rightArm, leftLeg, or rightLeg.
+    Attribute: Parameter pitch The rotation around the x-axis in degrees, which swings the limb forward or backward.
+    Attribute: Parameter roll The rotation around the z-axis in degrees, which swings the limb out to the side. Positive values swing the limb toward the positive x direction.
+
+    Attribute: Example
+
+    use Libraries.Game.Game
+    use Libraries.Game.Graphics.Model
+    use Libraries.Game.Graphics.Color
+
+    class Main is Game
+
+        Model person
+
+        action Main
+            StartGame()
+        end
+
+        action CreateGame
+            Color blue
+            blue:SetColor(0.2, 0.4, 0.9, 1)
+
+            person:LoadHuman(2, blue)
+            person:SetHumanLimbRotation("leftArm", 0, -90)
+            person:SetHumanLimbRotation("rightArm", 0, 90)
+            Add(person)
+        end
+    end
+    */
+    action SetHumanLimbRotation(text limb, number pitch, number roll)
+        if not (limb = "leftArm" or limb = "rightArm" or limb = "leftLeg" or limb = "rightLeg")
+            alert("SetHumanLimbRotation expects leftArm, rightArm, leftLeg, or rightLeg, but was given " + limb)
+        end
+
+        if resources = undefined or not UsingOpenGL()
+            alert("SetHumanLimbRotation can only be used on a Model loaded with LoadHuman while using OpenGL.")
+        end
+
+        ModelResourcesOpenGL openGLResources = cast(ModelResourcesOpenGL, resources)
+        Array<Node> nodes = openGLResources:GetNodes()
+        Node node = undefined
+        integer index = 0
+        repeat nodes:GetSize() times
+            node = nodes:Get(index)
+            if node:id = limb
+                node:rotation:SetEulerAngles(0, pitch, roll)
+                node:CalculateAllTransforms()
+                return now
+            end
+            index = index + 1
+        end
+
+        alert("This Model does not have a " + limb + " to rotate. Was it loaded with LoadHuman?")
     end
 
     /*
