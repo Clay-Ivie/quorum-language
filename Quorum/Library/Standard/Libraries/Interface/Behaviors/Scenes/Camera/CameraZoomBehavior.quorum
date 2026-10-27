@@ -1,0 +1,39 @@
+package Libraries.Interface.Behaviors.Scenes.Camera
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Controls.Scenes.SceneEditor
+
+/*
+    CameraZoomBehavior moves the 3D Scene Editor camera toward or away from the item it is
+    orbiting by multiplying the camera's distance by a factor. Factors less than 1 move the
+    camera closer and factors greater than 1 move it farther away. The new camera position
+    is announced to screen readers.
+
+    Attribute: Example
+
+    use Libraries.Interface.Behaviors.Scenes.Camera.CameraZoomBehavior
+
+    CameraZoomBehavior zoomIn
+    // Halve the distance to the target each time the behavior runs.
+    zoomIn:SetZoomFactor(0.5)
+*/
+class CameraZoomBehavior is SceneEditorCameraBehavior
+
+    number factor = 1
+
+    /*
+        Sets the amount the camera's distance is multiplied by each time this behavior runs.
+
+        Attribute: Parameter factor The distance multiplier. Must be greater than 0.
+    */
+    action SetZoomFactor(number factor)
+        me:factor = factor
+    end
+
+    action Run(BehaviorEvent event)
+        SceneEditor editor = GetSceneEditor(event)
+        if editor not= undefined
+            editor:ZoomCamera(factor)
+        end
+    end
+end

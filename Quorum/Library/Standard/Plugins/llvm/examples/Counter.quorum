@@ -1,0 +1,11 @@
+class Counter
+    integer value = 100
+
+    action Add(integer amount)
+        value = value + amount
+    end
+
+    action Get returns integer
+        return value
+    end
+end
