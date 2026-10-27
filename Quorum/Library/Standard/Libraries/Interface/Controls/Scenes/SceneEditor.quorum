@@ -200,6 +200,11 @@ class SceneEditor is Control, DefaultSceneManager
     Item savedFocus = undefined
     CameraItem3D perspectiveCameraItem = undefined
 
+    // A message for screen readers that waits until a focus change has been announced, because a
+    // focus announcement replaces any message sent just before it.
+    text pendingAnnouncement = ""
+    number pendingAnnouncementDelay = 0
+
     Math math
     Color color
 
@@ -2958,6 +2963,16 @@ action Update(number seconds)
 
         SelectEyeDropperTarget(target)
         AnnounceAfterFocus("Copied " + colorNames:GetName(color) + " from " + GetEyeDropperName(source) + " to " + GetEyeDropperName(target))
+    end
+
+    /*
+        Sends a message to screen readers after the current focus change has been announced. Quorum
+        announces focus changes on the next frame, and screen readers replace a message with any
+        announcement that comes right after it, so a message sent right away would not be heard.
+    */
+    private action AnnounceAfterFocus(text message)
+        pendingAnnouncement = message
+        pendingAnnouncementDelay = 0.3
     end
 
     /*
