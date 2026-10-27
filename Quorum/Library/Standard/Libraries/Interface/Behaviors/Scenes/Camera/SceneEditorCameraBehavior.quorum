@@ -1,0 +1,33 @@
+package Libraries.Interface.Behaviors.Scenes.Camera
+
+use Libraries.Interface.Behaviors.Behavior
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Controls.Scenes.SceneEditor
+use Libraries.Interface.Controls.Scenes.Items.EditorItem
+
+/*
+    SceneEditorCameraBehavior is a base class for Scene Editor behaviors that control the
+    camera. These behaviors can be triggered while the Scene Editor itself is focused, or
+    while an item in it (such as a selected item or the camera item) is focused, and this
+    class finds the SceneEditor in either case.
+*/
+class SceneEditorCameraBehavior is Behavior
+
+    /*
+        Returns the SceneEditor that the item in the event belongs to, or undefined if
+        the event's item is not part of a SceneEditor.
+
+        Attribute: Parameter event The event that triggered the behavior.
+        Attribute: Returns The SceneEditor for the event, or undefined.
+    */
+    action GetSceneEditor(BehaviorEvent event) returns SceneEditor
+        Object item = event:GetItem()
+        if item is SceneEditor
+            return cast(SceneEditor, item)
+        elseif item is EditorItem
+            EditorItem editorItem = cast(EditorItem, item)
+            return editorItem:GetSceneEditor()
+        end
+        return undefined
+    end
+end

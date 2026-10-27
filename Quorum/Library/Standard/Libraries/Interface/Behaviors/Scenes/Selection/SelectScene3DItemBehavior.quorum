@@ -28,11 +28,22 @@ use Libraries.Game.Item3DDepthComparison
     This behavior is used to select an item in the scene editor. The input expected 
     by the scene editor to use this behavior is a left mouse click. If the user clicks 
     on the scene editor and there is a scene item there then the scene editor will try 
-    to select that item. 
+    to select that item. If the behavior is set to add to the selection, the clicked item
+    is added to the items already selected, or removed if it was already selected. Otherwise,
+    the clicked item is also grabbed so it can be dragged with SelectionMouseDragBehavior.
 */
 class SelectScene3DItemBehavior is Behavior
     SceneConstants constants
     Item3DDepthComparison depthSorter
+    boolean addToSelection = false
+
+    action SetAddToSelection(boolean value)
+        addToSelection = value
+    end
+
+    action GetAddToSelection returns boolean
+        return addToSelection
+    end
 
     action Run(BehaviorEvent event)
         MouseEvent mouse = event:GetMouseEvent()
@@ -74,7 +85,15 @@ end
         end
         
         if not result:IsEmpty()
-            editor:SetFilteredItems(result, true)
+            if addToSelection
+                editor:CancelMouseDrag()
+                editor:ToggleFilteredItem(result:Get(0))
+            else
+                // Selects the item and grabs it, so holding the mouse button and moving drags it.
+                editor:BeginMouseDrag(cast(Item3D, result:Get(0)), ray)
+            end
+        else
+            editor:CancelMouseDrag()
         end
     end
     

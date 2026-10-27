@@ -1478,6 +1478,9 @@ InputSet shiftF10SetTextBox
         SelectionScaleBehavior selectionScaleZUpBehavior
         SelectionScaleBehavior selectionScaleZDownBehavior
         SelectionDeleteBehavior selectionDeleteBehavior
+        SelectionDuplicateBehavior selectionDuplicateBehavior
+        SelectionCopyBehavior selectionCopyBehavior
+        SelectionPasteBehavior selectionPasteBehavior
         SelectionCancelBehavior selectionCancelBehavior
         SelectionResetScaleBehavior selectionResetScaleBehavior
         SelectSceneItemBehavior selectSceneItemBehavior
@@ -1631,6 +1634,70 @@ InputSet shiftF10SetTextBox
         table:Add3D(selectionMoveForward3DStop, selectionStopMovingZBehavior)
         table:Add3D(selectionMoveBackward3DStart, selectionStartMovingBackwardBehavior)
         table:Add3D(selectionMoveBackward3DStop, selectionStopMovingZBehavior)
+
+        /*
+        Holding Shift with any selection movement key moves the selection at twice
+        the normal speed, or two grid cells at a time when snapping to the grid:
+            Shift + arrow keys: fast left, right, forward and backward in 3D
+            Shift + Control + Up/Down (Shift + Command on Mac): fast vertical in 3D
+        Releasing the arrow key stops the movement, through the stop behaviors above.
+        */
+        SelectionXDirectionBehavior selectionStartMovingLeftFastBehavior
+        selectionStartMovingLeftFastBehavior:SetDirection(-2)
+        SelectionXDirectionBehavior selectionStartMovingRightFastBehavior
+        selectionStartMovingRightFastBehavior:SetDirection(2)
+        SelectionYDirectionBehavior selectionStartMovingUpFastBehavior
+        selectionStartMovingUpFastBehavior:SetDirection(2)
+        SelectionYDirectionBehavior selectionStartMovingDownFastBehavior
+        selectionStartMovingDownFastBehavior:SetDirection(-2)
+        SelectionZDirectionBehavior selectionStartMovingForwardFastBehavior
+        selectionStartMovingForwardFastBehavior:SetDirection(2)
+        SelectionZDirectionBehavior selectionStartMovingBackwardFastBehavior
+        selectionStartMovingBackwardFastBehavior:SetDirection(-2)
+
+        InputSet selectionMoveLeftFast3DStart = AddShiftModifier(GetLeftArrowKey())
+        InputSet selectionMoveLeftFast3DStop = AddShiftModifier(GetLeftArrowKey())
+        selectionMoveLeftFast3DStop:SetInputTrigger(selectionMoveLeftFast3DStop:FINISH)
+        InputSet selectionMoveRightFast3DStart = AddShiftModifier(GetRightArrowKey())
+        InputSet selectionMoveRightFast3DStop = AddShiftModifier(GetRightArrowKey())
+        selectionMoveRightFast3DStop:SetInputTrigger(selectionMoveRightFast3DStop:FINISH)
+        InputSet selectionMoveForwardFast3DStart = AddShiftModifier(GetUpArrowKey())
+        InputSet selectionMoveForwardFast3DStop = AddShiftModifier(GetUpArrowKey())
+        selectionMoveForwardFast3DStop:SetInputTrigger(selectionMoveForwardFast3DStop:FINISH)
+        InputSet selectionMoveBackwardFast3DStart = AddShiftModifier(GetDownArrowKey())
+        InputSet selectionMoveBackwardFast3DStop = AddShiftModifier(GetDownArrowKey())
+        selectionMoveBackwardFast3DStop:SetInputTrigger(selectionMoveBackwardFast3DStop:FINISH)
+
+        InputSet selectionMoveUpFast3DStart
+        InputSet selectionMoveUpFast3DStop
+        InputSet selectionMoveDownFast3DStart
+        InputSet selectionMoveDownFast3DStop
+        if ShouldUseMacKeys()
+            selectionMoveUpFast3DStart = AddShiftModifier(AddMetaModifier(GetUpArrowKey()))
+            selectionMoveUpFast3DStop = AddShiftModifier(AddMetaModifier(GetUpArrowKey()))
+            selectionMoveDownFast3DStart = AddShiftModifier(AddMetaModifier(GetDownArrowKey()))
+            selectionMoveDownFast3DStop = AddShiftModifier(AddMetaModifier(GetDownArrowKey()))
+        else
+            selectionMoveUpFast3DStart = AddShiftModifier(AddControlModifier(GetUpArrowKey()))
+            selectionMoveUpFast3DStop = AddShiftModifier(AddControlModifier(GetUpArrowKey()))
+            selectionMoveDownFast3DStart = AddShiftModifier(AddControlModifier(GetDownArrowKey()))
+            selectionMoveDownFast3DStop = AddShiftModifier(AddControlModifier(GetDownArrowKey()))
+        end
+        selectionMoveUpFast3DStop:SetInputTrigger(selectionMoveUpFast3DStop:FINISH)
+        selectionMoveDownFast3DStop:SetInputTrigger(selectionMoveDownFast3DStop:FINISH)
+
+        table:Add3D(selectionMoveLeftFast3DStart, selectionStartMovingLeftFastBehavior)
+        table:Add3D(selectionMoveLeftFast3DStop, selectionStopMovingXBehavior)
+        table:Add3D(selectionMoveRightFast3DStart, selectionStartMovingRightFastBehavior)
+        table:Add3D(selectionMoveRightFast3DStop, selectionStopMovingXBehavior)
+        table:Add3D(selectionMoveForwardFast3DStart, selectionStartMovingForwardFastBehavior)
+        table:Add3D(selectionMoveForwardFast3DStop, selectionStopMovingZBehavior)
+        table:Add3D(selectionMoveBackwardFast3DStart, selectionStartMovingBackwardFastBehavior)
+        table:Add3D(selectionMoveBackwardFast3DStop, selectionStopMovingZBehavior)
+        table:Add3D(selectionMoveUpFast3DStart, selectionStartMovingUpFastBehavior)
+        table:Add3D(selectionMoveUpFast3DStop, selectionStopMovingYBehavior)
+        table:Add3D(selectionMoveDownFast3DStart, selectionStartMovingDownFastBehavior)
+        table:Add3D(selectionMoveDownFast3DStop, selectionStopMovingYBehavior)
         
         InputSet rightClickMove
         rightClickMove:SetMouseMovementInput(mouse:RIGHT)
@@ -1670,6 +1737,46 @@ InputSet shiftF10SetTextBox
         table:Add3D(mouseScroll, cameraMousePanBehavior)
         table:Add3D(mouseShiftMiddleMouseMoveStart, cameraMousePanBehavior)
         table:Add3D(mouseShiftMiddleMouseMove, cameraMousePanBehavior)
+
+        /*
+        3D camera mouse controls that only need the left button, for mice and trackpads
+        where the right and middle buttons are hard or impossible to use, such as the
+        Apple Magic Mouse. These follow the convention of 3D tools that emulate a three
+        button mouse:
+            Alt (Option on Mac) + left drag orbits around the selection.
+            Alt + Shift + left drag pans.
+            Alt + Control (Alt + Command on Mac) + left drag turns the camera in place.
+        The right and middle button controls above keep working as well.
+        */
+        CameraMouseMoveDirectionBehavior cameraMouseOrbitBehavior
+        cameraMouseOrbitBehavior:SetMode(cameraMouseOrbitBehavior:ORBIT)
+        CameraMouseMoveDirectionBehavior cameraMouseLookAroundBehavior
+        cameraMouseLookAroundBehavior:SetMode(cameraMouseLookAroundBehavior:LOOK_AROUND)
+
+        InputSet altLeftDrag
+        altLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        altLeftDrag:SetInputTrigger(altLeftDrag:CONTINUE)
+        AddAltModifier(altLeftDrag)
+
+        InputSet altShiftLeftDrag
+        altShiftLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        altShiftLeftDrag:SetInputTrigger(altShiftLeftDrag:CONTINUE)
+        AddAltModifier(altShiftLeftDrag)
+        AddShiftModifier(altShiftLeftDrag)
+
+        InputSet lookAroundLeftDrag
+        lookAroundLeftDrag:SetMouseMovementInput(mouse:LEFT)
+        lookAroundLeftDrag:SetInputTrigger(lookAroundLeftDrag:CONTINUE)
+        AddAltModifier(lookAroundLeftDrag)
+        if ShouldUseMacKeys()
+            AddMetaModifier(lookAroundLeftDrag)
+        else
+            AddControlModifier(lookAroundLeftDrag)
+        end
+
+        table:Add3D(altLeftDrag, cameraMouseOrbitBehavior)
+        table:Add3D(altShiftLeftDrag, cameraMousePanBehavior)
+        table:Add3D(lookAroundLeftDrag, cameraMouseLookAroundBehavior)
         
 
         InputSet selectionMoveLeft2DStart = GetLeftArrowKey()
@@ -1696,6 +1803,29 @@ InputSet shiftF10SetTextBox
         table:Add2D(selectionMoveUp2DStop, selectionStopMovingYBehavior)
         table:Add2D(selectionMoveDown2DStart, selectionStartMovingDownBehavior)
         table:Add2D(selectionMoveDown2DStop, selectionStopMovingYBehavior)
+
+        // Holding Shift while pressing the arrow keys moves the 2D selection at twice the normal speed.
+        InputSet selectionMoveLeftFast2DStart = AddShiftModifier(GetLeftArrowKey())
+        InputSet selectionMoveLeftFast2DStop = AddShiftModifier(GetLeftArrowKey())
+        selectionMoveLeftFast2DStop:SetInputTrigger(selectionMoveLeftFast2DStop:FINISH)
+        InputSet selectionMoveRightFast2DStart = AddShiftModifier(GetRightArrowKey())
+        InputSet selectionMoveRightFast2DStop = AddShiftModifier(GetRightArrowKey())
+        selectionMoveRightFast2DStop:SetInputTrigger(selectionMoveRightFast2DStop:FINISH)
+        InputSet selectionMoveUpFast2DStart = AddShiftModifier(GetUpArrowKey())
+        InputSet selectionMoveUpFast2DStop = AddShiftModifier(GetUpArrowKey())
+        selectionMoveUpFast2DStop:SetInputTrigger(selectionMoveUpFast2DStop:FINISH)
+        InputSet selectionMoveDownFast2DStart = AddShiftModifier(GetDownArrowKey())
+        InputSet selectionMoveDownFast2DStop = AddShiftModifier(GetDownArrowKey())
+        selectionMoveDownFast2DStop:SetInputTrigger(selectionMoveDownFast2DStop:FINISH)
+
+        table:Add2D(selectionMoveLeftFast2DStart, selectionStartMovingLeftFastBehavior)
+        table:Add2D(selectionMoveLeftFast2DStop, selectionStopMovingXBehavior)
+        table:Add2D(selectionMoveRightFast2DStart, selectionStartMovingRightFastBehavior)
+        table:Add2D(selectionMoveRightFast2DStop, selectionStopMovingXBehavior)
+        table:Add2D(selectionMoveUpFast2DStart, selectionStartMovingUpFastBehavior)
+        table:Add2D(selectionMoveUpFast2DStop, selectionStopMovingYBehavior)
+        table:Add2D(selectionMoveDownFast2DStart, selectionStartMovingDownFastBehavior)
+        table:Add2D(selectionMoveDownFast2DStop, selectionStopMovingYBehavior)
 
         InputSet toggleGridInput
         InputSet increaseGridUnitInput
@@ -1755,6 +1885,53 @@ InputSet shiftF10SetTextBox
 
         table:Add(focusCameraSet, focusCameraBehavior)
 
+        /*
+        3D camera orbit controls. Shift with the arrow keys orbits the camera around the
+        selected item (or the cursor if nothing is selected) one step per key press.
+        Shift + Control (Command on Mac) with up and down zooms in and out, and
+        Alt + Shift + F centers the camera on the selection again after panning.
+        */
+        CameraOrbitBehavior cameraOrbitLeftBehavior
+        CameraOrbitBehavior cameraOrbitRightBehavior
+        CameraOrbitBehavior cameraOrbitUpBehavior
+        CameraOrbitBehavior cameraOrbitDownBehavior
+        CameraZoomBehavior cameraZoomInBehavior
+        CameraZoomBehavior cameraZoomOutBehavior
+        CameraCenterOnSelectionBehavior cameraCenterOnSelectionBehavior
+
+        cameraOrbitLeftBehavior:SetOrbit(-15, 0)
+        cameraOrbitRightBehavior:SetOrbit(15, 0)
+        cameraOrbitUpBehavior:SetOrbit(0, 15)
+        cameraOrbitDownBehavior:SetOrbit(0, -15)
+        cameraZoomInBehavior:SetZoomFactor(1.0 / 1.25)
+        cameraZoomOutBehavior:SetZoomFactor(1.25)
+
+        InputSet cameraOrbitLeftSet = AddShiftModifier(GetLeftArrowKey())
+        InputSet cameraOrbitRightSet = AddShiftModifier(GetRightArrowKey())
+        InputSet cameraOrbitUpSet = AddShiftModifier(GetUpArrowKey())
+        InputSet cameraOrbitDownSet = AddShiftModifier(GetDownArrowKey())
+        InputSet cameraZoomInSet
+        InputSet cameraZoomOutSet
+        if ShouldUseMacKeys()
+            cameraZoomInSet = AddMetaModifier(AddShiftModifier(GetUpArrowKey()))
+            cameraZoomOutSet = AddMetaModifier(AddShiftModifier(GetDownArrowKey()))
+        else
+            cameraZoomInSet = AddControlModifier(AddShiftModifier(GetUpArrowKey()))
+            cameraZoomOutSet = AddControlModifier(AddShiftModifier(GetDownArrowKey()))
+        end
+        InputSet cameraCenterSet
+        cameraCenterSet:SetKeyboardInput(keys:F)
+        cameraCenterSet:AddModifier(cameraCenterSet:ALT)
+        cameraCenterSet:AddModifier(cameraCenterSet:SHIFT)
+
+        table:Add3D(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        table:Add3D(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        table:Add3D(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        table:Add3D(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        table:Add3D(cameraZoomInSet, cameraZoomInBehavior)
+        table:Add3D(cameraZoomOutSet, cameraZoomOutBehavior)
+        table:Add3D(cameraCenterSet, cameraCenterOnSelectionBehavior)
+
         // 2D camera set
         cameraItemTable2D:Add(reportLocation, reportLocationBehavior)
 
@@ -1808,6 +1985,15 @@ InputSet shiftF10SetTextBox
         cameraItemTable3D:Add(selectionCancelSet, selectionCancelBehavior)
 
         cameraItemTable3D:Add(focusPropertiesSet, focusPropertiesBehavior)
+
+        // 3D camera orbit controls while the camera item is focused
+        cameraItemTable3D:Add(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        cameraItemTable3D:Add(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        cameraItemTable3D:Add(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        cameraItemTable3D:Add(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        cameraItemTable3D:Add(cameraZoomInSet, cameraZoomInBehavior)
+        cameraItemTable3D:Add(cameraZoomOutSet, cameraZoomOutBehavior)
+        cameraItemTable3D:Add(cameraCenterSet, cameraCenterOnSelectionBehavior)
 
 
         // 3D selection table
@@ -1919,8 +2105,48 @@ InputSet shiftF10SetTextBox
         InputSet selectionDeleteSet2
         selectionDeleteSet2:SetKeyboardInput(keys:BACKSPACE)
 
+        InputSet selectionDuplicateSet
+        selectionDuplicateSet:SetKeyboardInput(keys:D)
+        InputSet selectionCopySet
+        selectionCopySet:SetKeyboardInput(keys:C)
+        InputSet selectionPasteSet
+        selectionPasteSet:SetKeyboardInput(keys:V)
+        if ShouldUseMacKeys()
+            selectionDuplicateSet = AddShiftModifier(AddMetaModifier(selectionDuplicateSet))
+            selectionCopySet = AddMetaModifier(selectionCopySet)
+            selectionPasteSet = AddMetaModifier(selectionPasteSet)
+        else
+            selectionDuplicateSet = AddShiftModifier(AddControlModifier(selectionDuplicateSet))
+            selectionCopySet = AddControlModifier(selectionCopySet)
+            selectionPasteSet = AddControlModifier(selectionPasteSet)
+        end
+
+
         selectionTable:Add(selectionDeleteSet, selectionDeleteBehavior)
         selectionTable:Add(selectionDeleteSet2, selectionDeleteBehavior)
+        selectionTable:Add(selectionDuplicateSet, selectionDuplicateBehavior)
+        selectionTable:Add(selectionCopySet, selectionCopyBehavior)
+        selectionTable:Add(selectionPasteSet, selectionPasteBehavior)
+
+        // Undo and redo while a selected item has focus, using the same keys as Quorum Studio.
+        SelectionUndoBehavior selectionUndoBehavior
+        SelectionUndoBehavior selectionRedoBehavior
+        selectionRedoBehavior:SetRedo(true)
+        InputSet selectionUndoSet
+        selectionUndoSet:SetKeyboardInput(keys:Z)
+        InputSet selectionRedoSet
+        selectionRedoSet:SetKeyboardInput(keys:Y)
+        if ShouldUseMacKeys()
+            selectionUndoSet = AddMetaModifier(selectionUndoSet)
+            selectionRedoSet = AddMetaModifier(selectionRedoSet)
+        else
+            selectionUndoSet = AddControlModifier(selectionUndoSet)
+            selectionRedoSet = AddControlModifier(selectionRedoSet)
+        end
+        selectionTable:Add(selectionUndoSet, selectionUndoBehavior)
+        selectionTable:Add(selectionRedoSet, selectionRedoBehavior)
+        selectionTable2D:Add(selectionUndoSet, selectionUndoBehavior)
+        selectionTable2D:Add(selectionRedoSet, selectionRedoBehavior)
         selectionTable:Add(selectionCancelSet, selectionCancelBehavior)
 
         selectionTable:Add(toggleGridInput, toggleGridBehavior)
@@ -1941,6 +2167,15 @@ InputSet shiftF10SetTextBox
         end
 
         selectionTable:Add(resetScaleSet, selectionResetScaleBehavior)
+
+        // 3D camera orbit controls while a 3D item is selected
+        selectionTable:Add(cameraOrbitLeftSet, cameraOrbitLeftBehavior)
+        selectionTable:Add(cameraOrbitRightSet, cameraOrbitRightBehavior)
+        selectionTable:Add(cameraOrbitUpSet, cameraOrbitUpBehavior)
+        selectionTable:Add(cameraOrbitDownSet, cameraOrbitDownBehavior)
+        selectionTable:Add(cameraZoomInSet, cameraZoomInBehavior)
+        selectionTable:Add(cameraZoomOutSet, cameraZoomOutBehavior)
+        selectionTable:Add(cameraCenterSet, cameraCenterOnSelectionBehavior)
 
         // 2D selection
         selectionTable2D:Add(reportLocation, reportLocationBehavior)
@@ -2012,6 +2247,28 @@ InputSet shiftF10SetTextBox
 
         //sceneItem3DTable:Add(GetLeftClick(), selectSceneItemBehavior)
 table:Add3D(GetLeftClick(), selectScene3DItemBehavior)
+
+        // Shift and left click adds an item to the selection, or removes it if already selected.
+        SelectScene3DItemBehavior addScene3DItemBehavior
+        addScene3DItemBehavior:SetAddToSelection(true)
+        table:Add3D(AddShiftModifier(GetLeftClick()), addScene3DItemBehavior)
+
+        // Holding the left mouse button and moving drags the selected 3D items. Releasing ends the drag.
+        SelectionMouseDragBehavior selectionMouseDragBehavior
+        InputSet leftClickMove
+        leftClickMove:SetMouseMovementInput(mouse:LEFT)
+        leftClickMove:SetInputTrigger(leftClickMove:CONTINUE)
+        InputSet leftClickRelease = GetLeftClick()
+        leftClickRelease:SetInputTrigger(leftClickRelease:FINISH)
+        table:Add3D(leftClickMove, selectionMouseDragBehavior)
+        table:Add3D(leftClickRelease, selectionMouseDragBehavior)
+
+        // Holding Alt while pressing and dragging moves the selected 3D items up and down instead.
+        SelectionMouseDragBehavior selectionMouseVerticalDragBehavior
+        selectionMouseVerticalDragBehavior:SetVertical(true)
+        table:Add3D(AddAltModifier(GetLeftClick()), selectScene3DItemBehavior)
+        table:Add3D(AddAltModifier(leftClickMove:Copy()), selectionMouseVerticalDragBehavior)
+        table:Add3D(AddAltModifier(leftClickRelease:Copy()), selectionMouseVerticalDragBehavior)
         
         // drag and drop
         sceneItemTable:Add(selectionHighlightDragInput, selectionHighlightDragBehavior)
@@ -2028,6 +2285,7 @@ table:Add3D(GetLeftClick(), selectScene3DItemBehavior)
         dragOffSet:SetDropItemInput()
         dragOffSet:SetInputTrigger(dragOffSet:FINISH_UNCAUGHT)
 
+        table:Add3D(selectionPasteSet, selectionPasteBehavior)
         table:Add2D(dragIntoSet, sceneEditorAcceptDragBehavior)
         table:Add2D(dragIntoContinueSet, sceneEditorAcceptDragBehavior)
         table:Add2D(dragIntoFinishSet, sceneEditorAcceptDragBehavior)
