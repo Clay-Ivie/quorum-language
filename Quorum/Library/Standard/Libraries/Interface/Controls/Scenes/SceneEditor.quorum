@@ -81,6 +81,8 @@ use Libraries.Interface.Controls.Scenes.Dialogs.PointLightPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.Audio3DPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.PropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.SceneEditorFindDialog
+use Libraries.Game.Graphics.Label
+use Libraries.Game.Layer2D
 
 
 /*
@@ -108,6 +110,10 @@ class SceneEditor is Control, DefaultSceneManager
     Array<SceneEditorChangeListener> sceneEditorChangeListeners
 
     SceneEditorEditManager editManager
+
+    Label cameraCoordinatesLabel
+    Control cameraCoordinatesPanel
+    Layer2D coordinatesLayer
 
     // The rotational speed measured in degrees,
     // and the directional speed, measured in 3D world units.
@@ -199,6 +205,32 @@ class SceneEditor is Control, DefaultSceneManager
         LabelBoxView view
         view:Initialize(color:CustomColor(0.9, 0.9, 0.925, 1), color:CustomColor(0.9, 0.9, 0.925, 1))
         SetView2D(view)
+
+        Label newCameraCoordinatesLabel
+        cameraCoordinatesLabel = newCameraCoordinatesLabel
+        cameraCoordinatesLabel:SetText("X: 0.0  Y: 0.0  Z: 0.0")
+        cameraCoordinatesLabel:SetSize(16)
+        cameraCoordinatesLabel:SetColor(color:Black())
+        cameraCoordinatesLabel:SetLeftMargin(8)
+        cameraCoordinatesLabel:SetRightMargin(8)
+        cameraCoordinatesLabel:SetTopMargin(4)
+        cameraCoordinatesLabel:SetBottomMargin(4)
+
+        LabelBoxView coordinatesBox
+        coordinatesBox:SetBorderThickness(0)
+        coordinatesBox:SetBorderStyle(coordinatesBox:ALL)
+        coordinatesBox:Initialize(color:White(), color:Black())
+
+        Control coordinatesPanel
+        cameraCoordinatesPanel = coordinatesPanel
+        FlowLayout coordinatesLayout
+        coordinatesPanel:SetLayout(coordinatesLayout)
+        coordinatesPanel:SetHorizontalLayoutMode(coordinatesPanel:FIT_CONTENTS)
+        coordinatesPanel:SetVerticalLayoutMode(coordinatesPanel:FIT_CONTENTS)
+        coordinatesPanel:SetView2D(coordinatesBox)
+
+        coordinatesPanel:Add(cameraCoordinatesLabel)
+        coordinatesLayer:Add(cameraCoordinatesPanel)
 
         SetInputGroup("SceneEditor")
         SetName("Scene Editor")
@@ -369,6 +401,8 @@ class SceneEditor is Control, DefaultSceneManager
                 layer2D:UpdateGridSize()
             end
         end
+
+        UpdateCoordinatesPosition()
     end
 
 
@@ -502,6 +536,29 @@ action Update(number seconds)
         end
 
         Camera camera = GetSelectedLayer():GetCamera()
+
+        if GetSelectedLayer() is EditorLayer3D
+            EditorCursor3D cursor3D = cast(EditorCursor3D, GetCursor())
+
+            // round coordinates
+            number camX = math:Round(cursor3D:GetX(), 1)
+            number camY = math:Round(cursor3D:GetY(), 1)
+            number camZ = math:Round(cursor3D:GetZ(), 1)
+
+            cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY + "  Z: " + camZ)
+        end
+
+        if GetSelectedLayer() is EditorLayer2D
+            EditorCursor2D cursor2D = cast(EditorCursor2D, GetCursor())
+
+            number camX = math:Round(cursor2D:GetX(), 1) / 32
+            number camY = math:Round(cursor2D:GetY(), 1) / 32
+
+            cameraCoordinatesLabel:SetText("X: " + camX + "  Y: " + camY)
+        end
+
+        UpdateCoordinatesPosition()
+
         boolean moved = false
         boolean isCursor = false
         Item movedItem = undefined
@@ -2149,7 +2206,7 @@ action Update(number seconds)
         return false
     end
 
-action HideLayers
+    action HideLayers
         Array<EditorLayer> layers = GetSceneLayers()
         integer counter = 0
         repeat while counter < layers:GetSize()
@@ -2158,6 +2215,9 @@ action HideLayers
             game:RemoveLayer(layer)
             counter = counter + 1
         end
+
+        Game overlayGame = manager:GetGame()
+        overlayGame:RemoveLayer(coordinatesLayer)
 
         HideDialogs()
     end
@@ -2172,7 +2232,17 @@ action HideLayers
             counter = counter + 1
         end
 
+        Game overlayGame = manager:GetGame()
+        overlayGame:AddLayer(coordinatesLayer)
+        UpdateCoordinatesPosition()
+
         HideDialogs()
+    end
+
+    action UpdateCoordinatesPosition
+        number panelX = GetGlobalX() + GetWidth() - cameraCoordinatesPanel:GetWidth() - 10
+        number panelY = GetGlobalY() + GetHeight() - cameraCoordinatesPanel:GetHeight() - 10
+        cameraCoordinatesPanel:SetPosition(panelX, panelY)
     end
 
 end
