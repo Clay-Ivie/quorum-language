@@ -21,6 +21,7 @@ use Libraries.Interface.Events.FocusListener
 use Libraries.Interface.Events.FocusEvent
 use Libraries.Game.Graphics.Drawable
 use Libraries.Containers.HashTable
+use Libraries.Containers.Iterator
 use Libraries.Game.Game
 use Libraries.System.File
 use Libraries.Interface.Controls.Button
@@ -47,6 +48,7 @@ use Libraries.Interface.Controls.Scenes.Items.EditorAudio3D
 use Libraries.Interface.Undo.SceneEditorDeleteEdit
 use Libraries.Interface.Events.SceneEditorChangeEvent
 use Libraries.Interface.Undo.SceneEditorInsertEdit
+use Libraries.Interface.Undo.SceneEditorMoveEdit
 use Libraries.Interface.Controls.Scenes.Items.Previews.ItemPreview2D
 use Libraries.Interface.Controls.Scenes.Items.Previews.ItemPreview3D
 use Libraries.Interface.Controls.Scenes.Items.Previews.ModelPreview
@@ -82,6 +84,9 @@ use Libraries.Interface.Controls.Scenes.Dialogs.PointLightPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.Audio3DPropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.PropertiesDialog
 use Libraries.Interface.Controls.Scenes.Dialogs.SceneEditorFindDialog
+use Libraries.Interface.Controls.Scenes.Items.EditorCamera3D
+use Libraries.Interface.Events.MouseEvent
+use Libraries.Compute.Ray
 use Libraries.Game.Graphics.Label
 use Libraries.Game.Layer2D
 
@@ -164,6 +169,51 @@ class SceneEditor is Control, DefaultSceneManager
     */
     Array<Item> filteredItems = undefined
 
+    // The last items copied with CopyItems, stored as JSON so they can be pasted with PasteCopiedItem.
+    Array<JavaScriptObjectNotation> copiedItemsJson
+
+    // How far along the X axis pasted items are moved, so they sit beside the copied items as a group.
+    number copiedItemsOffsetX = 0
+
+    // The 3D item grabbed with the mouse, or undefined if the mouse is not dragging an item.
+    Item3D mouseDragItem = undefined
+
+    /*
+    When the mouse is pressed on an item that is part of a group selection, the group stays
+    selected so it can be dragged together. If the mouse is released without dragging, only
+    this item is selected, as most editors do.
+    */
+    Item3D mouseDragCollapseItem = undefined
+
+    // The distance from the point under the mouse to the grabbed item, so the item does not jump to the mouse.
+    number mouseDragOffsetX = 0
+    number mouseDragOffsetY = 0
+    number mouseDragOffsetZ = 0
+
+    /*
+    Whether the current drag moves items up and down (Alt and drag) instead of along the ground.
+    When this changes during a drag, the drag is anchored again so the items do not jump.
+    */
+    boolean mouseDragVertical = false
+
+    // False until the drag knows where the mouse is relative to the grabbed item.
+    boolean mouseDragAnchored = false
+
+    /*
+    For up and down dragging, items move along an upright plane through the grabbed item that
+    faces the camera. This is the direction the plane faces, along the ground.
+    */
+    number mouseDragNormalX = 0
+    number mouseDragNormalZ = 0
+
+    /*
+    The selected 3D items and where they were when the current move started, by keyboard or mouse.
+    When the move finishes, these are recorded as one SceneEditorMoveEdit so the move can be undone.
+    Both arrays are empty when no move is in progress.
+    */
+    Array<Item3D> moveEditItems
+    Array<Vector3> moveEditStartPositions
+
     /*
     "Highlight" drawables used to show which items have been filtered.
     */
@@ -234,7 +284,7 @@ class SceneEditor is Control, DefaultSceneManager
         coordinatesLayer:Add(cameraCoordinatesPanel)
 
         SetInputGroup("SceneEditor")
-        SetName("Scene Editor")
+        SetName("Scene Editor TEST")
         SetFocusable(true)
         SetAccessibilityCode(parent:Item:CUSTOM)
 
@@ -775,7 +825,9 @@ action Update(number seconds)
                     end
     
                     if moved
+                        BeginMoveEdit(focus)
                         focus:Move(workVector3)
+                        MoveOtherSelectedItems(focus, workVector3:GetX(), workVector3:GetY(), workVector3:GetZ())
                     end
                 else
                     if selectionXDirection not= 0 or selectionYDirection not= 0 or selectionZDirection not= 0
@@ -803,23 +855,46 @@ action Update(number seconds)
         
                                 if selectionXDirection < 0
                                     x = layer:GetPreviousGridCoordinate(x)
+                                    if selectionXDirection < -1
+                                        x = layer:GetPreviousGridCoordinate(x)
+                                    end
                                 elseif selectionXDirection > 0
                                     x = layer:GetNextGridCoordinate(x)
+                                    if selectionXDirection > 1
+                                        x = layer:GetNextGridCoordinate(x)
+                                    end
                                 end
         
                                 if selectionYDirection < 0
                                     y = layer:GetPreviousGridCoordinate(y)
+                                    if selectionYDirection < -1
+                                        y = layer:GetPreviousGridCoordinate(y)
+                                    end
                                 elseif selectionYDirection > 0
                                     y = layer:GetNextGridCoordinate(y)
+                                    if selectionYDirection > 1
+                                        y = layer:GetNextGridCoordinate(y)
+                                    end
                                 end
         
                                 if selectionZDirection < 0
                                     z = layer:GetPreviousGridCoordinate(z)
+                                    if selectionZDirection < -1
+                                        z = layer:GetPreviousGridCoordinate(z)
+                                    end
                                 elseif selectionZDirection > 0
                                     z = layer:GetNextGridCoordinate(z)
+                                    if selectionZDirection > 1
+                                        z = layer:GetNextGridCoordinate(z)
+                                    end
                                 end
         
-                                focus:Move(x - focus:GetGlobalX(), y - focus:GetGlobalY(), z - focus:GetGlobalZ())
+                                number deltaX = x - focus:GetGlobalX()
+                                number deltaY = y - focus:GetGlobalY()
+                                number deltaZ = z - focus:GetGlobalZ()
+                                BeginMoveEdit(focus)
+                                focus:Move(deltaX, deltaY, deltaZ)
+                                MoveOtherSelectedItems(focus, deltaX, deltaY, deltaZ)
                                 Grid3D grid = layer:GetGrid()
                                 grid:SetPosition(grid:GetNearestGridCoordinate(focus:GetGlobalX()),
                                     0,
@@ -909,14 +984,26 @@ action Update(number seconds)
     
                             if selectionXDirection < 0
                                 x = layer:GetPreviousGridCoordinate(x)
+                                if selectionXDirection < -1
+                                    x = layer:GetPreviousGridCoordinate(x)
+                                end
                             elseif selectionXDirection > 0
                                 x = layer:GetNextGridCoordinate(x)
+                                if selectionXDirection > 1
+                                    x = layer:GetNextGridCoordinate(x)
+                                end
                             end
     
                             if selectionYDirection < 0
                                 y = layer:GetPreviousGridCoordinate(y)
+                                if selectionYDirection < -1
+                                    y = layer:GetPreviousGridCoordinate(y)
+                                end
                             elseif selectionYDirection > 0
                                 y = layer:GetNextGridCoordinate(y)
+                                if selectionYDirection > 1
+                                    y = layer:GetNextGridCoordinate(y)
+                                end
                             end
     
                             target:Move(x - target:GetGlobalX(), y - target:GetGlobalY())
@@ -966,6 +1053,339 @@ action Update(number seconds)
                 end
             end
         end
+    end
+
+    /*
+    This action moves every selected 3D item other than the focused one by the same amount the
+    focused one moved, so a group of selected items moves together and keeps its layout. Nothing
+    happens if the focused item is not one of the selection highlights, such as the cursor.
+    */
+    private action MoveOtherSelectedItems(EditorItem3D focus, number x, number y, number z)
+        if not (focus is SelectionHighlight3D)
+            return now
+        end
+
+        SelectionHighlight3D focusHighlight = cast(SelectionHighlight3D, focus)
+        if GetSelectionHighlight(focusHighlight:GetItem()) = undefined
+            return now
+        end
+
+        integer counter = 0
+        repeat while counter < filterHighlights:GetSize()
+            SelectionHighlight highlight = filterHighlights:Get(counter)
+            if highlight is SelectionHighlight3D
+                SelectionHighlight3D highlight3D = cast(SelectionHighlight3D, highlight)
+                if highlight3D not= focusHighlight
+                    highlight3D:Move(x, y, z)
+                end
+            end
+            counter = counter + 1
+        end
+    end
+
+    /*
+    This action is called when the mouse is pressed on a 3D item, with the ray that was used to
+    find it. The item is selected and grabbed so it can be dragged. If the item is already part of
+    a group selection, the group stays selected and the item is focused, so the group can be dragged.
+    The drag starts along the ground. If Alt is held while dragging, ContinueMouseDrag anchors it
+    again for moving up and down.
+    */
+    action BeginMouseDrag(Item3D item, Ray ray)
+        CancelMouseDrag()
+
+        SelectionHighlight highlight = GetSelectionHighlight(item)
+        if highlight not= undefined and filteredItems:GetSize() > 1
+            highlight:Focus()
+            mouseDragCollapseItem = item
+        else
+            Array<Item> items
+            items:Add(item)
+            SetFilteredItems(items, true)
+        end
+
+        mouseDragItem = item
+        AnchorMouseDrag(ray, false)
+    end
+
+    /*
+    This action moves the grabbed item, and every other selected item with it, to follow the mouse.
+    Normally items move along a flat plane at the grabbed item's height, so their X and Z positions
+    change but not their height. If vertical is true, items move only up and down instead. If grid
+    snapping is on, the grabbed item snaps to the grid.
+    */
+    action ContinueMouseDrag(MouseEvent mouse, boolean vertical)
+        if mouseDragItem = undefined or GetSelectedLayer() is EditorLayer3D = false
+            return now
+        end
+
+        SelectionHighlight highlight = GetSelectionHighlight(mouseDragItem)
+        if highlight = undefined or not (highlight is SelectionHighlight3D)
+            return now
+        end
+        SelectionHighlight3D highlight3D = cast(SelectionHighlight3D, highlight)
+
+        EditorLayer3D layer = cast(EditorLayer3D, GetSelectedLayer())
+        EditorCamera3D camera = layer:GetEditorCamera()
+        Ray ray = camera:GetPickRay(mouse:GetX(), mouse:GetY(), GetGlobalX(), GetGlobalY(), camera:GetWidth(), camera:GetHeight())
+
+        // When Alt is pressed or released during a drag, start measuring from the mouse again so nothing jumps.
+        if mouseDragAnchored = false or vertical not= mouseDragVertical
+            AnchorMouseDrag(ray, vertical)
+            return now
+        end
+
+        number deltaX = 0
+        number deltaY = 0
+        number deltaZ = 0
+
+        if vertical
+            Vector3 point = GetVerticalMouseDragPoint(ray)
+            if point = undefined
+                return now
+            end
+
+            number targetY = point:GetY() + mouseDragOffsetY
+            if IsGridSnapping()
+                targetY = layer:GetNearestGridCoordinate(targetY)
+            end
+            deltaY = targetY - mouseDragItem:GetGlobalY()
+        else
+            Vector3 point = GetMouseDragPoint(ray, mouseDragItem:GetGlobalY())
+            if point = undefined
+                return now
+            end
+
+            number targetX = point:GetX() + mouseDragOffsetX
+            number targetZ = point:GetZ() + mouseDragOffsetZ
+            if IsGridSnapping()
+                targetX = layer:GetNearestGridCoordinate(targetX)
+                targetZ = layer:GetNearestGridCoordinate(targetZ)
+            end
+            deltaX = targetX - mouseDragItem:GetGlobalX()
+            deltaZ = targetZ - mouseDragItem:GetGlobalZ()
+        end
+
+        if deltaX = 0 and deltaY = 0 and deltaZ = 0
+            return now
+        end
+
+        // Once the group has been dragged, releasing the mouse should keep the whole group selected.
+        mouseDragCollapseItem = undefined
+
+        BeginMoveEdit(highlight3D)
+        highlight3D:Move(deltaX, deltaY, deltaZ)
+        MoveOtherSelectedItems(highlight3D, deltaX, deltaY, deltaZ)
+
+        if IsGridSnapping() and vertical = false
+            Grid3D grid = layer:GetGrid()
+            grid:SetPosition(grid:GetNearestGridCoordinate(highlight3D:GetGlobalX()), 0, grid:GetNearestGridCoordinate(highlight3D:GetGlobalZ()))
+        end
+
+        UpdateActivePropertiesDialog(highlight3D)
+    end
+
+    /*
+    This action records where the mouse is relative to the grabbed item, for either kind of drag,
+    so later mouse movement moves the item by the same amount the mouse moves. If the mouse ray
+    does not cross the plane the drag uses, the drag stays unanchored and tries again on the next
+    mouse movement.
+    */
+    private action AnchorMouseDrag(Ray ray, boolean vertical)
+        mouseDragVertical = vertical
+        mouseDragAnchored = false
+        if mouseDragItem = undefined
+            return now
+        end
+
+        if vertical
+            // Face the plane toward the camera, along the ground, so it stays upright.
+            Vector3 direction = ray:GetDirection()
+            number length = math:SquareRoot(direction:GetX() * direction:GetX() + direction:GetZ() * direction:GetZ())
+            if length < 0.0001
+                return now
+            end
+            mouseDragNormalX = direction:GetX() / length
+            mouseDragNormalZ = direction:GetZ() / length
+
+            Vector3 point = GetVerticalMouseDragPoint(ray)
+            if point = undefined
+                return now
+            end
+            mouseDragOffsetY = mouseDragItem:GetGlobalY() - point:GetY()
+        else
+            Vector3 point = GetMouseDragPoint(ray, mouseDragItem:GetGlobalY())
+            if point = undefined
+                return now
+            end
+            mouseDragOffsetX = mouseDragItem:GetGlobalX() - point:GetX()
+            mouseDragOffsetZ = mouseDragItem:GetGlobalZ() - point:GetZ()
+        end
+
+        mouseDragAnchored = true
+    end
+
+    /*
+    This action returns where the ray crosses the upright plane through the grabbed item that is
+    used for up and down dragging, or undefined if the ray runs alongside the plane or points away from it.
+    */
+    private action GetVerticalMouseDragPoint(Ray ray) returns Vector3
+        Vector3 origin = ray:GetOrigin()
+        Vector3 direction = ray:GetDirection()
+        number facing = direction:GetX() * mouseDragNormalX + direction:GetZ() * mouseDragNormalZ
+        if math:AbsoluteValue(facing) < 0.0001
+            return undefined
+        end
+
+        number toItem = (mouseDragItem:GetGlobalX() - origin:GetX()) * mouseDragNormalX + (mouseDragItem:GetGlobalZ() - origin:GetZ()) * mouseDragNormalZ
+        number distance = toItem / facing
+        if distance < 0
+            return undefined
+        end
+
+        Vector3 point
+        point:Set(origin:GetX() + direction:GetX() * distance, origin:GetY() + direction:GetY() * distance, origin:GetZ() + direction:GetZ() * distance)
+        return point
+    end
+
+    /*
+    This action is called when the mouse is released. If the mouse was pressed on an item in a
+    group selection and not dragged, only that item stays selected.
+    */
+    action FinishMouseDrag
+        Item3D collapseItem = mouseDragCollapseItem
+        CancelMouseDrag()
+
+        if collapseItem not= undefined
+            Array<Item> items
+            items:Add(collapseItem)
+            SetFilteredItems(items, true)
+        end
+    end
+
+    /*
+    This action stops any mouse drag without changing the selection.
+    */
+    action CancelMouseDrag
+        mouseDragItem = undefined
+        mouseDragCollapseItem = undefined
+        mouseDragAnchored = false
+
+        // Any movement that already happened during the drag is kept, so it is recorded for undo.
+        FinishMoveEdit()
+    end
+
+    /*
+    This action is called just before the selected 3D items move. If no move is in progress, it
+    remembers where each selected item is, so the move can be undone once it finishes. If a move
+    is already in progress, nothing changes, so a held key or a mouse drag is recorded as one move.
+    Nothing happens if the focused item is not one of the selection highlights, such as the cursor.
+    */
+    private action BeginMoveEdit(EditorItem3D focus)
+        if moveEditItems:IsEmpty() = false or not (focus is SelectionHighlight3D)
+            return now
+        end
+
+        integer counter = 0
+        repeat while counter < filterHighlights:GetSize()
+            SelectionHighlight highlight = filterHighlights:Get(counter)
+            if highlight is SelectionHighlight3D and highlight:GetItem() is Item3D
+                Item3D item = cast(Item3D, highlight:GetItem())
+                Vector3 start
+                start:Set(item:GetX(), item:GetY(), item:GetZ())
+                moveEditItems:Add(item)
+                moveEditStartPositions:Add(start)
+            end
+            counter = counter + 1
+        end
+    end
+
+    /*
+    This action ends the move in progress, if there is one, and records it as a single edit so it
+    can be undone. If none of the items ended up somewhere new, nothing is recorded.
+    */
+    private action FinishMoveEdit
+        if moveEditItems:IsEmpty()
+            return now
+        end
+
+        Array<Item3D> items = moveEditItems
+        Array<Vector3> startPositions = moveEditStartPositions
+        Array<Item3D> newItems
+        Array<Vector3> newStartPositions
+        moveEditItems = newItems
+        moveEditStartPositions = newStartPositions
+
+        Array<Vector3> endPositions
+        boolean changed = false
+        integer counter = 0
+        repeat while counter < items:GetSize()
+            Item3D item = items:Get(counter)
+            Vector3 start = startPositions:Get(counter)
+            Vector3 finish
+            finish:Set(item:GetX(), item:GetY(), item:GetZ())
+            endPositions:Add(finish)
+            if start:GetX() not= finish:GetX() or start:GetY() not= finish:GetY() or start:GetZ() not= finish:GetZ()
+                changed = true
+            end
+            counter = counter + 1
+        end
+
+        if changed
+            SceneEditorMoveEdit edit
+            edit:Create(me, items, startPositions, endPositions)
+            editManager:Add(edit)
+        end
+    end
+
+    /*
+    This action finishes a keyboard move once every movement key has been released, so holding
+    keys in more than one direction is still recorded as one move. A mouse drag in progress is
+    left alone, since it finishes when the mouse is released.
+    */
+    private action FinishKeyboardMoveEdit
+        if selectionXDirection = 0 and selectionYDirection = 0 and selectionZDirection = 0 and mouseDragItem = undefined
+            FinishMoveEdit()
+        end
+    end
+
+    /*
+    This action moves a 3D item so its position is the given values. If the item is selected,
+    its selection highlight moves with it. This is used to undo and redo moves.
+    */
+    action MoveItemTo(Item3D item, number x, number y, number z)
+        number deltaX = x - item:GetX()
+        number deltaY = y - item:GetY()
+        number deltaZ = z - item:GetZ()
+
+        SelectionHighlight highlight = GetSelectionHighlight(item)
+        if highlight is SelectionHighlight3D
+            SelectionHighlight3D highlight3D = cast(SelectionHighlight3D, highlight)
+            highlight3D:Move(deltaX, deltaY, deltaZ)
+            UpdateActivePropertiesDialog(highlight3D)
+        else
+            item:Move(deltaX, deltaY, deltaZ)
+        end
+    end
+
+    /*
+    This action returns where the ray crosses the flat plane at the given height, or undefined if
+    the ray runs alongside the plane or points away from it.
+    */
+    private action GetMouseDragPoint(Ray ray, number height) returns Vector3
+        Vector3 origin = ray:GetOrigin()
+        Vector3 direction = ray:GetDirection()
+        if math:AbsoluteValue(direction:GetY()) < 0.0001
+            return undefined
+        end
+
+        number distance = (height - origin:GetY()) / direction:GetY()
+        if distance < 0
+            return undefined
+        end
+
+        Vector3 point
+        point:Set(origin:GetX() + direction:GetX() * distance, height, origin:GetZ() + direction:GetZ() * distance)
+        return point
     end
 
     action SetFilteredItems(Array<Item> items, boolean moveFocus)
@@ -1036,6 +1456,47 @@ action Update(number seconds)
                 SetSelectedItem(undefined)
             else
                 SetSelectedItem(filterHighlights:Get(0))
+            end
+        end
+    end
+
+    /*
+    This action returns the items that are currently selected, or undefined if nothing is selected.
+    */
+    action GetFilteredItems returns Array<Item>
+        return filteredItems
+    end
+
+    /*
+    This action adds an item to the current selection, or removes it if it is already selected.
+    The other selected items stay selected. If the item was added, focus moves to its highlight.
+    */
+    action ToggleFilteredItem(Item item)
+        Array<Item> items
+        boolean found = false
+        if filteredItems not= undefined
+            integer counter = 0
+            repeat while counter < filteredItems:GetSize()
+                Item current = filteredItems:Get(counter)
+                if current = item
+                    found = true
+                else
+                    items:Add(current)
+                end
+                counter = counter + 1
+            end
+        end
+
+        if not found
+            items:Add(item)
+        end
+
+        SetFilteredItems(items, true)
+
+        if not found
+            SelectionHighlight highlight = GetSelectionHighlight(item)
+            if highlight not= undefined
+                highlight:Focus()
             end
         end
     end
@@ -1205,6 +1666,205 @@ action Update(number seconds)
         SceneEditorChangeEvent event
         event:Set(me, item, undefined, resultLayer, event:REMOVED)
         NotifySceneEditorChangeListeners(event)
+    end
+
+    /*
+    This action creates a copy of an item that has been added to the scene. The copy is
+    placed in the same layer, offset along the X axis by the width of the original so the
+    two do not overlap. The copy is then selected so it can be moved right away. The copy is
+    recorded as an insert edit, so it can be undone.
+    */
+    action Duplicate(Item item)
+        EditorLayer layer = undefined
+        Item copy = undefined
+
+        if item is Item3D
+            Item3D original = cast(Item3D, item)
+            layer = cast(EditorLayer3D, original:GetLayer())
+            JavaScriptObjectNotation json = WrapArrayProperties(SaveItem3D(original))
+            if layer = undefined or json = undefined
+                return now
+            end
+
+            Item3D copy3D = LoadItem3D(json)
+            copy3D:SetName(GetCopyName(layer, original:GetName()))
+            copy3D:SetPosition(original:GetX() + original:GetWidth(), original:GetY(), original:GetZ())
+            copy = copy3D
+        elseif item is Item2D
+            Item2D original = cast(Item2D, item)
+            layer = cast(EditorLayer2D, original:GetLayer())
+            JavaScriptObjectNotation json = SaveItem2D(original)
+            if layer = undefined or json = undefined
+                return now
+            end
+
+            Item2D copy2D = parent:DefaultSceneManager:LoadItem2D(json)
+            copy2D:SetName(original:GetName() + " Copy")
+            copy2D:SetPosition(original:GetX() + original:GetWidth(), original:GetY())
+            copy = copy2D
+        else
+            return now
+        end
+
+        Add(layer, copy)
+        NotifyAccessibility(copy, "Duplicated " + copy:GetName())
+
+        if GetSelectedLayer() not= layer
+            SetSelectedLayer(layer)
+        end
+
+        Array<Item> selected
+        selected:Add(copy)
+        SetFilteredItems(selected, true)
+    end
+
+    /*
+    The scene loader reads position, size, scale, rotation, and color arrays through an outer
+    array, but SaveItem3D writes them without it. This action wraps those values so a saved item
+    can be loaded back with LoadItem3D, as CopyItem and Duplicate do.
+    */
+    private action WrapArrayProperties(JavaScriptObjectNotation json) returns JavaScriptObjectNotation
+        // Build a new object rather than adding to json, since Add would keep the unwrapped entry too.
+        JavaScriptObjectNotation wrapped
+        Iterator<JavaScriptObjectNotation> iterator = json:GetIterator()
+        repeat while iterator:HasNext()
+            JavaScriptObjectNotation child = iterator:Next()
+            text key = child:GetKey()
+            if key = properties:POSITION or key = properties:SIZE or key = properties:SCALE or key = properties:ROTATION or key = properties:COLOR
+                JavaScriptObjectNotation outer
+                outer:SetArray()
+                outer:Add(child)
+                outer:SetKey(key)
+                wrapped:Add(outer)
+            else
+                wrapped:Add(child)
+            end
+        end
+        return wrapped
+    end
+
+    /*
+    This action returns the name for a new copy of an item. Any " Copy" suffix is removed from the
+    original name first, so copying "Coin Copy 2" also produces "Coin Copy 3" rather than "Coin Copy 2 Copy 1".
+    The number is the first one not already used by an item in the layer.
+    */
+    private action GetCopyName(EditorLayer layer, text originalName) returns text
+        text baseName = originalName
+        Array<text> parts = originalName:Split(" Copy")
+        if parts:Get(0):IsEmpty() = false
+            baseName = parts:Get(0)
+        end
+
+        integer copyNumber = 1
+        repeat while NameExistsInLayer(layer, baseName + " Copy " + copyNumber)
+            copyNumber = copyNumber + 1
+        end
+        return baseName + " Copy " + copyNumber
+    end
+
+    /*
+    This action returns true if an item in the layer has the given name. Editor items are skipped,
+    since the selection highlights share the names of the items they highlight.
+    */
+    private action NameExistsInLayer(EditorLayer layer, text name) returns boolean
+        if layer is EditorLayer3D = false
+            return false
+        end
+
+        SceneConstants constants
+        EditorLayer3D layer3D = cast(EditorLayer3D, layer)
+        Iterator<Item3D> items = layer3D:GetIterator()
+        repeat while items:HasNext()
+            Item3D item = items:Next()
+            if item:HasProperty(constants:EDITOR_TAG) = false and item:GetName() = name
+                return true
+            end
+        end
+        return false
+    end
+
+    /*
+    This action stores a copy of the given item so it can be pasted into the scene later with
+    PasteCopiedItem. It is the same as calling CopyItems with only this item.
+    */
+    action CopyItem(Item item)
+        Array<Item> items
+        items:Add(item)
+        CopyItems(items)
+    end
+
+    /*
+    This action stores copies of the given items so they can be pasted into the scene later with
+    PasteCopiedItem. Only 3D items can be copied, and other items are skipped. Each item is saved
+    to JSON, the same way the scene is saved, so pasting creates new items and leaves the originals
+    untouched. If none of the items are 3D, the previously copied items are kept.
+    */
+    action CopyItems(Array<Item> items)
+        if items = undefined
+            return now
+        end
+
+        Array<JavaScriptObjectNotation> copies
+        number minX = 0
+        number maxX = 0
+        integer counter = 0
+        repeat while counter < items:GetSize()
+            Item item = items:Get(counter)
+            if item is Item3D
+                Item3D original = cast(Item3D, item)
+                number left = original:GetX() - original:GetWidth() * 0.5
+                number right = original:GetX() + original:GetWidth() * 0.5
+                if copies:IsEmpty() or left < minX
+                    minX = left
+                end
+                if copies:IsEmpty() or right > maxX
+                    maxX = right
+                end
+                copies:Add(WrapArrayProperties(SaveItem3D(original)))
+            end
+            counter = counter + 1
+        end
+
+        if copies:IsEmpty() = false
+            copiedItemsJson = copies
+            copiedItemsOffsetX = maxX - minX
+        end
+    end
+
+    /*
+    This action pastes the last copied items into the selected 3D layer. The pasted items keep
+    their positions relative to each other and are moved together along the X axis so they sit
+    beside the copied items. They are selected, and recorded as a single insert edit so one undo
+    removes all of them. Nothing happens if no items have been copied or the selected layer is not 3D.
+    */
+    action PasteCopiedItem
+        EditorLayer layer = GetSelectedLayer()
+        if copiedItemsJson:IsEmpty() or layer is EditorLayer3D = false
+            return now
+        end
+
+        Array<Item> pasted
+        integer counter = 0
+        repeat while counter < copiedItemsJson:GetSize()
+            Item3D copy3D = LoadItem3D(copiedItemsJson:Get(counter))
+            copy3D:SetName(copy3D:GetName() + " Copy")
+            copy3D:SetPosition(copy3D:GetX() + copiedItemsOffsetX, copy3D:GetY(), copy3D:GetZ())
+            AddToLayer(layer, copy3D)
+            pasted:Add(copy3D)
+            counter = counter + 1
+        end
+
+        SceneEditorInsertEdit edit
+        edit:Create(me, layer, pasted)
+        editManager:Add(edit)
+
+        if pasted:GetSize() = 1
+            NotifyAccessibility(pasted:Get(0), "Pasted " + pasted:Get(0):GetName())
+        else
+            NotifyAccessibility(pasted:Get(0), "Pasted " + pasted:GetSize() + " items")
+        end
+
+        SetFilteredItems(pasted, true)
     end
 
     action CreateItemPreview(ItemBlueprint schematic) returns ItemPreview
@@ -1426,6 +2086,18 @@ action Update(number seconds)
     end
 
     action Add(EditorLayer layer, Item item)
+        AddToLayer(layer, item)
+
+        SceneEditorInsertEdit edit
+        edit:Create(me, layer, item)
+        editManager:Add(edit)
+    end
+
+    /*
+    This action adds an item to a layer and notifies the change listeners, but does not record
+    an insert edit. It is used when several items are added together under one edit.
+    */
+    private action AddToLayer(EditorLayer layer, Item item)
         if layer is EditorLayer2D and item is Item2D
             EditorLayer2D layer2D = cast(EditorLayer2D, layer)
             Item2D item2D = cast(Item2D, item)
@@ -1444,10 +2116,6 @@ action Update(number seconds)
         SceneEditorChangeEvent event
         event:Set(me, item, undefined, layer, event:ADDED)
         NotifySceneEditorChangeListeners(event)
-
-        SceneEditorInsertEdit edit
-        edit:Create(me, layer, item)
-        editManager:Add(edit)
     end
 
     action AddLayer(EditorLayer layer)
@@ -1707,6 +2375,7 @@ action Update(number seconds)
         selectionXDirection = direction
 
         if direction = 0
+            FinishKeyboardMoveEdit()
             if manager:GetFocus() is EditorItem
                 EditorItem focus = cast(EditorItem, manager:GetFocus())
                 NotifyAccessibility(focus, GetDescriptionAtItemPosition(focus))
@@ -1722,6 +2391,7 @@ action Update(number seconds)
         selectionYDirection = direction
 
         if direction = 0
+            FinishKeyboardMoveEdit()
             if manager:GetFocus() is EditorItem
                 EditorItem focus = cast(EditorItem, manager:GetFocus())
                 NotifyAccessibility(focus, GetDescriptionAtItemPosition(focus))
@@ -1737,6 +2407,7 @@ action Update(number seconds)
         selectionZDirection = direction
 
         if direction = 0
+            FinishKeyboardMoveEdit()
             if manager:GetFocus() is EditorItem
                 EditorItem focus = cast(EditorItem, manager:GetFocus())
                 NotifyAccessibility(focus, GetDescriptionAtItemPosition(focus))
