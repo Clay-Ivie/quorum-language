@@ -1445,6 +1445,8 @@ InputSet shiftF10SetTextBox
         itemPreviewTable2D:SetIdentifier("NewItemPreview2D")
         InputTable propertiesDialogTable
         propertiesDialogTable:SetIdentifier("PropertiesDialog")
+        InputTable colorSwatchGridTable
+        colorSwatchGridTable:SetIdentifier("ColorSwatchGrid")
         InputTable findTable
         findTable:SetIdentifier("VisualEditorFindDialog")
         InputTable paletteItemContentTable
@@ -2410,6 +2412,19 @@ table:Add3D(GetLeftClick(), selectScene3DItemBehavior)
 
         propertiesDialogTable:Add(focusCameraSet, focusCameraBehavior)
 
+        // color picker swatches
+        ColorSwatchGridMoveFocusBehavior swatchUpBehavior
+        swatchUpBehavior:SetDirection(-1, 0)
+        ColorSwatchGridMoveFocusBehavior swatchDownBehavior
+        swatchDownBehavior:SetDirection(1, 0)
+        ColorSwatchGridMoveFocusBehavior swatchLeftBehavior
+        swatchLeftBehavior:SetDirection(0, -1)
+        ColorSwatchGridMoveFocusBehavior swatchRightBehavior
+        swatchRightBehavior:SetDirection(0, 1)
+        colorSwatchGridTable:Add(GetUpArrowKey(), swatchUpBehavior)
+        colorSwatchGridTable:Add(GetDownArrowKey(), swatchDownBehavior)
+        colorSwatchGridTable:Add(GetLeftArrowKey(), swatchLeftBehavior)
+        colorSwatchGridTable:Add(GetRightArrowKey(), swatchRightBehavior)
         // game camera preview and setting the game camera, in the editor and while an item is selected
         ToggleGamePreviewBehavior toggleGamePreviewBehavior
         SetGameCameraBehavior setGameCameraBehavior
@@ -2559,6 +2574,7 @@ table:Add3D(GetLeftClick(), selectScene3DItemBehavior)
         gameInput:AddInputTable(itemPreviewTable)
         gameInput:AddInputTable(itemPreviewTable2D)
         gameInput:AddInputTable(propertiesDialogTable)
+        gameInput:AddInputTable(colorSwatchGridTable)
         gameInput:AddInputTable(findTable)
         gameInput:AddInputTable(paletteItemContentTable)
     end

@@ -1,0 +1,26 @@
+package Libraries.Interface.Behaviors.Scenes.Properties
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Behaviors.Behavior
+use Libraries.Interface.Controls.Scenes.Dialogs.ColorSwatchGrid
+
+/*
+    This behavior runs when an arrow key is pressed in the color picker. It moves focus to the
+    swatch in that direction.
+*/
+class ColorSwatchGridMoveFocusBehavior is Behavior
+    integer rowChange = 0
+    integer columnChange = 0
+
+    action SetDirection(integer rows, integer columns)
+        rowChange = rows
+        columnChange = columns
+    end
+
+    action Run(BehaviorEvent event)
+        if event:GetItem() is ColorSwatchGrid
+            ColorSwatchGrid grid = cast(ColorSwatchGrid, event:GetItem())
+            grid:MoveFocus(rowChange, columnChange)
+        end
+    end
+end

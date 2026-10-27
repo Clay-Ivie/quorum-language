@@ -20,6 +20,9 @@ resetting the scale of the object.
 class EditorModel is Model
 
     number yaw = 0
+
+    // The color last applied with SetColor, which GetColor returns so the saved color matches the object.
+    Color editorColor = undefined
     number pitch = 0
     number roll = 0
 
@@ -145,4 +148,21 @@ class EditorModel is Model
         return vector
     end
 
+    /*
+        Sets the color of the model and remembers it, so GetColor returns the color that was applied.
+    */
+    action SetColor(Color color)
+        parent:Model:SetColor(color)
+        editorColor = color
+    end
+
+    /*
+        Returns the color last applied with SetColor, or the color the model was loaded with.
+    */
+    action GetColor returns Color
+        if editorColor not= undefined
+            return editorColor
+        end
+        return parent:Model:GetColor()
+    end
 end

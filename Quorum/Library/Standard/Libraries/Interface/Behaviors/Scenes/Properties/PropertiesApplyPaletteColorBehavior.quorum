@@ -1,0 +1,36 @@
+package Libraries.Interface.Behaviors.Scenes.Properties
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Behaviors.Behavior
+use Libraries.Interface.Controls.Scenes.Dialogs.ColorPickerDialog
+use Libraries.Interface.Item
+
+/*
+    This behavior runs when a swatch in the color picker is clicked. It applies the swatch's
+    color to the selected object.
+*/
+class PropertiesApplyPaletteColorBehavior is Behavior
+    ColorPickerDialog dialog = undefined
+    number red = 0.0
+    number green = 0.0
+    number blue = 0.0
+    Item swatch = undefined
+
+    action SetDialog(ColorPickerDialog picker)
+        dialog = picker
+    end
+
+    action SetColor(number newRed, number newGreen, number newBlue)
+        red = newRed
+        green = newGreen
+        blue = newBlue
+    end
+
+    action SetSwatch(Item item)
+        swatch = item
+    end
+
+    action Run(BehaviorEvent event)
+        dialog:ApplyPaletteColor(red, green, blue, swatch)
+    end
+end

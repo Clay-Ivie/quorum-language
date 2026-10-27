@@ -1,0 +1,21 @@
+package Libraries.Interface.Behaviors.Scenes.Properties
+
+use Libraries.Interface.Events.BehaviorEvent
+use Libraries.Interface.Behaviors.Behavior
+use Libraries.Interface.Controls.Scenes.Dialogs.Item3DPropertiesDialog
+
+/*
+    This behavior runs when the Eye Dropper button in the Object Properties dialog is pressed. It
+    turns on the eye dropper for the selected object.
+*/
+class PropertiesEyeDropperBehavior is Behavior
+    Item3DPropertiesDialog dialog = undefined
+
+    action SetDialog(Item3DPropertiesDialog propertiesDialog)
+        dialog = propertiesDialog
+    end
+
+    action Run(BehaviorEvent event)
+        dialog:StartEyeDropper()
+    end
+end

@@ -1,0 +1,246 @@
+package Libraries.Interface.Controls.Scenes.Dialogs
+
+use Libraries.Interface.Events.SelectionListener
+use Libraries.Interface.Events.SelectionEvent
+use Libraries.Interface.Controls.Dialog
+use Libraries.Interface.Controls.Control
+use Libraries.Interface.Controls.Button
+use Libraries.Interface.Controls.Scenes.SceneEditor
+use Libraries.Interface.Selections.SceneEditorSelection
+use Libraries.Interface.Layouts.FlowLayout
+use Libraries.Interface.Views.ControlShaderView
+use Libraries.Interface.Behaviors.Scenes.Properties.PropertiesApplyPaletteColorBehavior
+use Libraries.Game.Graphics.Color
+use Libraries.Game.Graphics.Label
+use Libraries.Containers.Array
+use Libraries.Game.Graphics.Drawable
+use Libraries.Interface.Item
+use Libraries.Interface.Controls.Scenes.Items.EditorModel
+use Libraries.Interface.Controls.Scenes.Items.Highlights.ModelSelectionHighlight
+use Libraries.Interface.Layouts.LayoutProperties
+
+/*
+    The ColorPickerDialog class is a window opened from the Object Properties dialog. It shows a
+    palette of colors. Clicking a swatch applies its red, green, and blue values to the selected
+    object, and keeps the object's alpha.
+*/
+class ColorPickerDialog is Dialog, SelectionListener
+
+    SceneEditor editor = undefined
+    EditorModel target = undefined
+    Item3DPropertiesDialog objectDialog = undefined
+    Array<Button> swatches
+    boolean initialized = false
+
+    on create
+        SetName("Color Picker")
+        SetDescription("Choose a color for the selected object. Arrow keys or Tab move between colors, Enter or Space applies one.")
+        SetInputGroup("Dialog")
+        SetPixelWidth(260)
+        SetVerticalLayoutMode(parent:Libraries.Interface.Controls.Control:FIT_CONTENTS)
+    end
+
+    /*
+        Creates the palette and listens to the editor's selection. Only needs to run once.
+    */
+    action Initialize(SceneEditor controller)
+        if initialized
+            return now
+        end
+        initialized = true
+
+        editor = controller
+        editor:AddSelectionListener(me)
+
+        ControlShaderView view
+        view:Initialize()
+        Color color
+
+        Control panel
+        FlowLayout panelLayout
+        panel:SetLayout(panelLayout)
+        panel:SetPercentageWidth(1.0)
+        panel:SetVerticalLayoutMode(panel:FIT_CONTENTS)
+        panel:SetBorderColor(color:Black())
+        panel:SetBorderThickness(1)
+        panel:SetView2D(view)
+
+        Label label
+        label:SetText("Choose a color")
+        label:SetLeftMargin(10)
+        label:SetTopMargin(10)
+        label:SetBottomMargin(6)
+        panel:Add(label)
+
+        ColorSwatchGrid grid
+        FlowLayout gridLayout
+        grid:SetLayout(gridLayout)
+        grid:SetPercentageWidth(1.0)
+        grid:SetVerticalLayoutMode(panel:FIT_CONTENTS)
+        grid:SetLeftMargin(10)
+        grid:SetRightMargin(10)
+        grid:SetBottomMargin(10)
+
+        // Three rows of hues at full, medium, and dark brightness, then a row of grays.
+        AddHueRow(grid, 1.0, "")
+        AddHueRow(grid, 0.6, "Medium ")
+        AddHueRow(grid, 0.3, "Dark ")
+        AddSwatch(grid, 0.0, 0.0, 0.0, "Black")
+        AddSwatch(grid, 0.14, 0.14, 0.14, "Very Dark Gray")
+        AddSwatch(grid, 0.29, 0.29, 0.29, "Dark Gray")
+        AddSwatch(grid, 0.43, 0.43, 0.43, "Medium Dark Gray")
+        AddSwatch(grid, 0.57, 0.57, 0.57, "Medium Light Gray")
+        AddSwatch(grid, 0.71, 0.71, 0.71, "Light Gray")
+        AddSwatch(grid, 0.86, 0.86, 0.86, "Very Light Gray")
+        AddSwatch(grid, 1.0, 1.0, 1.0, "White")
+
+        // Each row has 8 swatches, so Up and Down move by 8.
+        grid:SetSwatches(swatches, 8)
+        panel:Add(grid)
+        Add(panel)
+
+        // Tab moves through the swatches in order, and wraps from the last back to the first.
+        integer index = 0
+        repeat while index < swatches:GetSize()
+            Button current = swatches:Get(index)
+            current:SetNextFocus(swatches:Get((index + 1) mod swatches:GetSize()))
+            current:SetPreviousFocus(swatches:Get((index - 1 + swatches:GetSize()) mod swatches:GetSize()))
+            index = index + 1
+        end
+    end
+
+    /*
+        Gives the palette a link to the Object Properties dialog, so its fields can be refreshed
+        after a color is picked.
+    */
+    action SetObjectDialog(Item3DPropertiesDialog dialog)
+        objectDialog = dialog
+    end
+
+    /*
+        Shows the window for the currently selected object.
+    */
+    action Open
+        if editor = undefined
+            return now
+        end
+
+        // The selection can be the model's highlight rather than the model itself, so use the model behind it.
+        target = undefined
+        Item selected = editor:GetSelectedItem()
+        if selected is ModelSelectionHighlight
+            ModelSelectionHighlight highlight = cast(ModelSelectionHighlight, selected)
+            target = highlight:GetEditorModel()
+        elseif selected is EditorModel
+            target = cast(EditorModel, selected)
+        end
+        if target = undefined
+            return now
+        end
+
+        if IsShowing() = false
+            Show()
+        end
+        swatches:Get(0):Focus()
+    end
+
+    /*
+        Shows the window higher on the screen than the default center position.
+    */
+    action Show
+        LayoutProperties properties = GetDefaultLayoutProperties()
+        properties:SetPercentageY(0.25)
+        parent:Dialog:Show()
+    end
+
+    /*
+        Applies a palette color to the target object, keeping its current alpha, then refreshes the
+        Object Properties fields so they show the new values. The swatch is used to announce the
+        change to screen readers.
+    */
+    action ApplyPaletteColor(number red, number green, number blue, Item swatch)
+        if target = undefined
+            return now
+        end
+
+        number alpha = 1.0
+        Color existing = target:GetColor()
+        if existing not= undefined
+            alpha = existing:GetAlpha()
+        end
+
+        // The scene editor records the change so it can be undone.
+        Color color
+        color:SetColor(red, green, blue, alpha)
+        editor:ChangeItemColor(target, color)
+
+        if objectDialog not= undefined
+            objectDialog:SetColorFields(red, green, blue)
+        end
+
+        if editor not= undefined and swatch not= undefined
+            text objectName = target:GetName()
+            if objectName = undefined or objectName = ""
+                objectName = "object"
+            end
+            editor:NotifyAccessibility(swatch, swatch:GetName() + " applied to " + objectName)
+        end
+    end
+
+    /*
+        Adds one row of hues. The brightness scales every hue in the row, and the prefix (such as
+        "Dark ") is added to each color's name.
+    */
+    private action AddHueRow(Control grid, number brightness, text prefix)
+        AddSwatch(grid, brightness, 0.0, 0.0, prefix + "Red")
+        AddSwatch(grid, brightness, 0.5 * brightness, 0.0, prefix + "Orange")
+        AddSwatch(grid, brightness, brightness, 0.0, prefix + "Yellow")
+        AddSwatch(grid, 0.0, 0.7 * brightness, 0.0, prefix + "Green")
+        AddSwatch(grid, 0.0, brightness, brightness, prefix + "Cyan")
+        AddSwatch(grid, 0.0, 0.0, brightness, prefix + "Blue")
+        AddSwatch(grid, 0.5 * brightness, 0.0, 0.8 * brightness, prefix + "Purple")
+        AddSwatch(grid, brightness, 0.0, brightness, prefix + "Magenta")
+    end
+
+    /*
+        Adds one clickable color swatch to the grid. Clicking it applies the color. The name is what
+        screen readers announce.
+    */
+    private action AddSwatch(Control grid, number red, number green, number blue, text colorName)
+        Color swatchColor
+        swatchColor:SetColor(red, green, blue, 1.0)
+
+        PropertiesApplyPaletteColorBehavior applyBehavior
+        applyBehavior:SetDialog(me)
+        applyBehavior:SetColor(red, green, blue)
+
+        ColorSwatchButton swatch
+        swatch:SetName(colorName)
+        applyBehavior:SetSwatch(swatch)
+        // The square is drawn white and tinted with the swatch color through the icon color.
+        Color whiteColor
+        whiteColor:SetColor(1.0, 1.0, 1.0, 1.0)
+        Drawable swatchDrawable
+        swatchDrawable:LoadFilledRectangle(24, 24, whiteColor)
+        swatch:SetIconColor(swatchColor)
+        swatch:LoadImage(swatchDrawable)
+        swatch:SetPixelWidth(24)
+        swatch:SetPixelHeight(24)
+        swatch:SetRightMargin(4)
+        swatch:SetBottomMargin(4)
+        swatch:SetBehavior(applyBehavior)
+        grid:Add(swatch)
+        swatches:Add(swatch)
+    end
+
+    /*
+        Closes the window when the selection changes, so it cannot keep editing the wrong object.
+    */
+    action SelectionChanged(SelectionEvent event)
+        if IsShowing()
+            if event:GetSelection() is SceneEditorSelection
+                Hide()
+            end
+        end
+    end
+end

@@ -1,0 +1,26 @@
+package Libraries.Interface.Controls.Scenes.Dialogs
+
+use Libraries.Interface.Events.FocusListener
+use Libraries.Interface.Events.FocusEvent
+
+/*
+    The ColorFieldFocusListener class watches the Red, Green, and Blue fields in the Object Properties
+    dialog. When one loses focus, the color typed into it is recorded as a single undo step, instead
+    of one step for every key pressed.
+*/
+class ColorFieldFocusListener is FocusListener
+    Item3DPropertiesDialog dialog = undefined
+
+    action SetDialog(Item3DPropertiesDialog propertiesDialog)
+        dialog = propertiesDialog
+    end
+
+    action GainedFocus(FocusEvent event)
+    end
+
+    action LostFocus(FocusEvent event)
+        if dialog not= undefined
+            dialog:FinishColorTyping()
+        end
+    end
+end

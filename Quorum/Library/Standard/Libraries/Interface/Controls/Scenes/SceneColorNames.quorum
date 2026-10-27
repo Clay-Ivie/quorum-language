@@ -1,0 +1,151 @@
+package Libraries.Interface.Controls.Scenes
+
+use Libraries.Game.Graphics.Color
+use Libraries.Containers.Array
+use Libraries.Compute.Math
+
+/*
+    The SceneColorNames class gives a spoken name for any color, so screen readers can say "Dark Blue"
+    instead of three numbers. The list includes every color in the color picker, with the same names,
+    plus some common colors the picker doesn't have. A color that isn't on the list gets the name of
+    the closest color that is.
+
+    Closeness is measured in the CIELAB color space, where the distance between two colors matches
+    how different they look to people much better than distance between red, green, and blue values.
+*/
+class SceneColorNames
+
+    Array<text> names
+    // Each named color in CIELAB, by lightness and its two color axes.
+    Array<number> lightnesses
+    Array<number> greenRedValues
+    Array<number> blueYellowValues
+    Math math
+
+    on create
+        // The color picker's rows of hues, at full, medium, and dark brightness.
+        AddHueRow(1.0, "")
+        AddHueRow(0.6, "Medium ")
+        AddHueRow(0.3, "Dark ")
+
+        // The color picker's grays.
+        AddColor("Black", 0.0, 0.0, 0.0)
+        AddColor("Very Dark Gray", 0.14, 0.14, 0.14)
+        AddColor("Dark Gray", 0.29, 0.29, 0.29)
+        AddColor("Medium Dark Gray", 0.43, 0.43, 0.43)
+        AddColor("Medium Light Gray", 0.57, 0.57, 0.57)
+        AddColor("Light Gray", 0.71, 0.71, 0.71)
+        AddColor("Very Light Gray", 0.86, 0.86, 0.86)
+        AddColor("White", 1.0, 1.0, 1.0)
+
+        // Common colors the picker doesn't have.
+        AddColor("Pink", 1.0, 0.75, 0.8)
+        AddColor("Hot Pink", 1.0, 0.41, 0.71)
+        AddColor("Coral", 1.0, 0.5, 0.31)
+        AddColor("Peach", 1.0, 0.85, 0.73)
+        AddColor("Gold", 1.0, 0.84, 0.0)
+        AddColor("Brown", 0.55, 0.27, 0.07)
+        AddColor("Tan", 0.82, 0.71, 0.55)
+        AddColor("Beige", 0.96, 0.96, 0.86)
+        AddColor("Light Green", 0.56, 0.93, 0.56)
+        AddColor("Light Blue", 0.68, 0.85, 0.9)
+        AddColor("Sky Blue", 0.53, 0.81, 0.92)
+        AddColor("Lavender", 0.71, 0.49, 0.86)
+    end
+
+    /*
+        Returns the name of the color, or of the closest named color.
+    */
+    action GetName(Color color) returns text
+        if color = undefined
+            return "no color"
+        end
+        return GetName(color:GetRed(), color:GetGreen(), color:GetBlue())
+    end
+
+    /*
+        Returns the name of the color with these red, green, and blue values (each from 0 to 1), or of
+        the closest named color.
+    */
+    action GetName(number red, number green, number blue) returns text
+        Array<number> lab = ToLab(red, green, blue)
+        integer closest = 0
+        number closestDistance = -1.0
+        integer index = 0
+        repeat while index < names:GetSize()
+            number lightnessChange = lab:Get(0) - lightnesses:Get(index)
+            number greenRedChange = lab:Get(1) - greenRedValues:Get(index)
+            number blueYellowChange = lab:Get(2) - blueYellowValues:Get(index)
+            number distance = lightnessChange * lightnessChange + greenRedChange * greenRedChange + blueYellowChange * blueYellowChange
+            if closestDistance < 0 or distance < closestDistance
+                closest = index
+                closestDistance = distance
+            end
+            index = index + 1
+        end
+        return names:Get(closest)
+    end
+
+    /*
+        Converts red, green, and blue values (each from 0 to 1, in the standard sRGB space) to CIELAB,
+        using the D65 white point. Returns lightness, then the green-red axis, then the blue-yellow axis.
+    */
+    private action ToLab(number red, number green, number blue) returns Array<number>
+        number linearRed = ToLinear(red)
+        number linearGreen = ToLinear(green)
+        number linearBlue = ToLinear(blue)
+
+        number x = (0.4124 * linearRed + 0.3576 * linearGreen + 0.1805 * linearBlue) / 0.95047
+        number y = 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue
+        number z = (0.0193 * linearRed + 0.1192 * linearGreen + 0.9505 * linearBlue) / 1.08883
+
+        number fx = LabCurve(x)
+        number fy = LabCurve(y)
+        number fz = LabCurve(z)
+
+        Array<number> lab
+        lab:Add(116.0 * fy - 16.0)
+        lab:Add(500.0 * (fx - fy))
+        lab:Add(200.0 * (fy - fz))
+        return lab
+    end
+
+    /*
+        Undoes the sRGB gamma curve, so a channel is proportional to the amount of light.
+    */
+    private action ToLinear(number channel) returns number
+        if channel <= 0.04045
+            return channel / 12.92
+        end
+        return math:RaiseToPower((channel + 0.055) / 1.055, 2.4)
+    end
+
+    private action LabCurve(number value) returns number
+        if value > 0.008856
+            return math:RaiseToPower(value, 1.0 / 3.0)
+        end
+        return 7.787 * value + 16.0 / 116.0
+    end
+
+    /*
+        Adds one row of the color picker's hues. This must match ColorPickerDialog's AddHueRow.
+    */
+    private action AddHueRow(number brightness, text prefix)
+        AddColor(prefix + "Red", brightness, 0.0, 0.0)
+        AddColor(prefix + "Orange", brightness, 0.5 * brightness, 0.0)
+        AddColor(prefix + "Yellow", brightness, brightness, 0.0)
+        AddColor(prefix + "Green", 0.0, 0.7 * brightness, 0.0)
+        AddColor(prefix + "Cyan", 0.0, brightness, brightness)
+        AddColor(prefix + "Blue", 0.0, 0.0, brightness)
+        AddColor(prefix + "Purple", 0.5 * brightness, 0.0, 0.8 * brightness)
+        AddColor(prefix + "Magenta", brightness, 0.0, brightness)
+    end
+
+    private action AddColor(text name, number red, number green, number blue)
+        Array<number> lab = ToLab(red, green, blue)
+        names:Add(name)
+        lightnesses:Add(lab:Get(0))
+        greenRedValues:Add(lab:Get(1))
+        blueYellowValues:Add(lab:Get(2))
+    end
+end
