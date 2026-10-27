@@ -1,0 +1,786 @@
+package Libraries.Language.Compile.Translate
+
+use Libraries.Containers.Array
+use Libraries.Containers.HashTable
+use Libraries.Containers.Iterator
+use Libraries.Language.Support.TextBuilder
+use Libraries.Language.Compile.Symbol.Type
+use Libraries.Language.Compile.Symbol.Variable
+use Libraries.Language.Compile.Symbol.Class
+use Libraries.Language.Compile.Symbol.Action
+use Libraries.Language.Compile.Symbol.Operation
+use Libraries.Language.Compile.Location
+use Libraries.Compute.Math
+
+/*
+    LLVMBuilder accumulates a textual LLVM IR module (opaque pointers, LLVM 15+)
+    while the opcode tree is walked. Every opcode's WriteLLVM action receives
+    the builder, emits instructions into the current function and returns the
+    SSA value (as text) holding its result, or "" for statements.
+
+    Proof-of-concept scope:
+      - primitives (integer -> i32, number -> double, boolean -> i1, text -> ptr)
+      - locals, me-fields, control flow, arithmetic, comparisons, casts
+      - calls between actions of user classes that have no parents (other than Object)
+      - object creation for those classes
+    Anything else is reported as a warning and compiled into a call to
+    quorum_unsupported, which aborts at runtime with a message.
+*/
+class LLVMBuilder
+    // ---------------- module state ----------------
+    TextBuilder typeDefinitions
+    TextBuilder globals
+    TextBuilder functions
+    HashTable<text, text> stringConstants
+    integer stringCounter = 0
+    HashTable<text, text> fieldIndices
+    HashTable<text, text> moduleClasses
+    Array<text> warnings
+
+    // ---------------- function state ----------------
+    TextBuilder entry
+    TextBuilder body
+    text functionHeader = ""
+    HashTable<text, text> locals
+    integer localCounter = 0
+    integer tempCounter = 0
+    integer labelCounter = 0
+    boolean terminated = false
+    text currentReturnType = "void"
+    text chainReceiver = ""
+
+    text lf = ""
+    text dq = ""
+    text hexDigits = "0123456789ABCDEF"
+
+    on create
+        lf = lf:GetLineFeed()
+        dq = dq:GetDoubleQuote()
+    end
+
+    // =========================================================
+    // Module level
+    // =========================================================
+
+    /*
+        Returns true if this class can be compiled by the proof-of-concept
+        backend: no parents other than Object and no generics.
+    */
+    action IsSupportedClass(Class clazz) returns boolean
+        if clazz = undefined
+            return false
+        end
+        if clazz:HasGenerics()
+            return false
+        end
+        Iterator<Class> parents = clazz:GetParentClasses()
+        repeat while parents:HasNext()
+            Class p = parents:Next()
+            if not p:IsObject()
+                return false
+            end
+        end
+        return true
+    end
+
+    action AddModuleClass(Class clazz)
+        text key = clazz:GetStaticKey()
+        if not moduleClasses:HasKey(key)
+            moduleClasses:Add(key, key)
+        end
+    end
+
+    action IsModuleClass(Class clazz) returns boolean
+        if clazz = undefined
+            return false
+        end
+        return moduleClasses:HasKey(clazz:GetStaticKey())
+    end
+
+    action AddWarning(text message)
+        warnings:Add(message)
+    end
+
+    action GetWarnings returns Array<text>
+        return warnings
+    end
+
+    action GetStructName(Class clazz) returns text
+        return "%" + dq + "class." + clazz:GetStaticKey() + dq
+    end
+
+    action GetFunctionName(Class clazz, Action act) returns text
+        return "@" + dq + clazz:GetStaticKey() + ":" + act:ConvertActionToJavaScriptName() + dq
+    end
+
+    action GetConstructorFunctionName(Class clazz) returns text
+        return "@" + dq + clazz:GetStaticKey() + ":constructor_" + dq
+    end
+
+    action GetNewFunctionName(Class clazz) returns text
+        return "@" + dq + clazz:GetStaticKey() + ":$new" + dq
+    end
+
+    action GetMainFunctionName(Class clazz) returns text
+        return "@" + dq + clazz:GetStaticKey() + ":Main" + dq
+    end
+
+    /*
+        Emits the struct type for a class and records the index of each field.
+        Slot 0 is reserved for a class descriptor pointer (unused for now, but
+        it is where dynamic dispatch tables will hang later).
+    */
+    action DeclareClassStructure(Class clazz)
+        text line = GetStructName(clazz) + " = type { ptr"
+        integer index = 1
+        Iterator<Variable> fields = clazz:GetVariables()
+        repeat while fields:HasNext()
+            Variable field = fields:Next()
+            line = line + ", " + GetLLVMType(field:GetType())
+            fieldIndices:Add(clazz:GetStaticKey() + "|" + field:GetName(), "" + index)
+            index = index + 1
+        end
+        line = line + " }"
+        typeDefinitions:Append(line + lf)
+    end
+
+    action WriteMainEntry(Class clazz)
+        functions:Append("define i32 @main(i32 %argc, ptr %argv) {" + lf)
+        functions:Append("entry:" + lf)
+        functions:Append("  call void @quorum_runtime_init(i32 %argc, ptr %argv)" + lf)
+        functions:Append("  %program = call ptr " + GetNewFunctionName(clazz) + "()" + lf)
+        functions:Append("  call void " + GetMainFunctionName(clazz) + "(ptr %program)" + lf)
+        functions:Append("  ret i32 0" + lf)
+        functions:Append("}" + lf + lf)
+    end
+
+    action GetModuleText(text moduleName) returns text
+        TextBuilder result
+        result:Append("; ModuleID = '" + moduleName + "'" + lf)
+        result:Append("; Generated by the Quorum LLVM backend (proof of concept)" + lf + lf)
+        result:Append(typeDefinitions:ToText() + lf)
+        result:Append(GetRuntimeDeclarations() + lf)
+        result:Append(globals:ToText() + lf)
+        result:Append(functions:ToText())
+        return result:ToText()
+    end
+
+    action GetRuntimeDeclarations returns text
+        TextBuilder d
+        d:Append("declare void @quorum_runtime_init(i32, ptr)" + lf)
+        d:Append("declare ptr @quorum_alloc(i64)" + lf)
+        d:Append("declare void @quorum_output(ptr)" + lf)
+        d:Append("declare void @quorum_say(ptr)" + lf)
+        d:Append("declare ptr @quorum_input(ptr)" + lf)
+        d:Append("declare ptr @quorum_text_concat(ptr, ptr)" + lf)
+        d:Append("declare ptr @quorum_text_from_integer(i32)" + lf)
+        d:Append("declare ptr @quorum_text_from_number(double)" + lf)
+        d:Append("declare ptr @quorum_text_from_boolean(i32)" + lf)
+        d:Append("declare i32 @quorum_text_to_integer(ptr)" + lf)
+        d:Append("declare double @quorum_text_to_number(ptr)" + lf)
+        d:Append("declare i32 @quorum_text_to_boolean(ptr)" + lf)
+        d:Append("declare i32 @quorum_text_compare(ptr, ptr)" + lf)
+        d:Append("declare i32 @quorum_text_equals(ptr, ptr)" + lf)
+        d:Append("declare i32 @quorum_integer_divide(i32, i32)" + lf)
+        d:Append("declare i32 @quorum_integer_modulus(i32, i32)" + lf)
+        d:Append("declare void @quorum_check_defined(ptr, ptr)" + lf)
+        d:Append("declare void @quorum_unsupported(ptr)" + lf)
+        d:Append("declare i32 @llvm.fptosi.sat.i32.f64(double)" + lf)
+        return d:ToText()
+    end
+
+    // =========================================================
+    // Function level
+    // =========================================================
+
+    /*
+        Starts a new function. The header is the full "define ..." line
+        without the opening brace. returnType is an LLVM type name.
+    */
+    action BeginFunction(text header, text returnType)
+        TextBuilder freshEntry
+        TextBuilder freshBody
+        HashTable<text, text> freshLocals
+        entry = freshEntry
+        body = freshBody
+        locals = freshLocals
+        functionHeader = header
+        currentReturnType = returnType
+        localCounter = 0
+        tempCounter = 0
+        labelCounter = 0
+        terminated = false
+    end
+
+    /*
+        Starts the function for a Quorum action. Every action receives the
+        object it was called on as %me, followed by its parameters.
+    */
+    action BeginAction(Class clazz, Action act, boolean isConstructor)
+        text returnType = "void"
+        if not isConstructor
+            returnType = GetLLVMType(act:GetReturnType())
+        end
+
+        text name = GetFunctionName(clazz, act)
+        if isConstructor
+            name = GetConstructorFunctionName(clazz)
+        end
+
+        text header = "define " + returnType + " " + name + "(ptr %me"
+        integer i = 0
+        Iterator<Variable> parameters = act:GetParameterIterator()
+        repeat while parameters:HasNext()
+            Variable param = parameters:Next()
+            header = header + ", " + GetLLVMType(param:GetType()) + " %arg." + i
+            i = i + 1
+        end
+        header = header + ")"
+        BeginFunction(header, returnType)
+
+        //copy parameters into stack slots so they can be reassigned
+        i = 0
+        parameters = act:GetParameterIterator()
+        repeat while parameters:HasNext()
+            Variable param = parameters:Next()
+            text slot = GetLocalSlot(param)
+            entry:Append("  store " + GetLLVMType(param:GetType()) + " %arg." + i + ", ptr " + slot + lf)
+            i = i + 1
+        end
+    end
+
+    action EndFunction
+        if not terminated
+            if currentReturnType = "void"
+                body:Append("  ret void" + lf)
+            else
+                body:Append("  ret " + currentReturnType + " " + GetDefaultValue(currentReturnType) + lf)
+            end
+        end
+        functions:Append(functionHeader + " {" + lf)
+        functions:Append("entry:" + lf)
+        functions:Append(entry:ToText())
+        functions:Append("  br label %body" + lf)
+        functions:Append("body:" + lf)
+        functions:Append(body:ToText())
+        functions:Append("}" + lf + lf)
+    end
+
+    /*
+        A chained call (a:b:c) is a list of action call opcodes. Before each
+        element after the first, the chain stores the previous element's value
+        here; the element takes it (clearing it) before evaluating anything
+        else, so nested chains in its arguments cannot see it.
+    */
+    action SetChainReceiver(text value)
+        chainReceiver = value
+    end
+
+    action TakeChainReceiver returns text
+        text value = chainReceiver
+        chainReceiver = ""
+        return value
+    end
+
+    action GetCurrentReturnType returns text
+        return currentReturnType
+    end
+
+    action NewTemp returns text
+        text result = "%t" + tempCounter
+        tempCounter = tempCounter + 1
+        return result
+    end
+
+    action NewLabel(text hint) returns text
+        text result = "L" + labelCounter + "." + hint
+        labelCounter = labelCounter + 1
+        return result
+    end
+
+    /*
+        Appends one instruction. If the current block already ended (for
+        example after a return), a fresh unreachable block is opened first
+        so the IR stays well formed.
+    */
+    action Emit(text instruction)
+        if terminated
+            text dead = NewLabel("dead")
+            body:Append(dead + ":" + lf)
+            terminated = false
+        end
+        body:Append("  " + instruction + lf)
+    end
+
+    action EmitTerminator(text instruction)
+        Emit(instruction)
+        terminated = true
+    end
+
+    /*
+        Emits an instruction that produces a value and returns its name.
+    */
+    action EmitValue(text instruction) returns text
+        text t = NewTemp()
+        Emit(t + " = " + instruction)
+        return t
+    end
+
+    action Branch(text label)
+        EmitTerminator("br label %" + label)
+    end
+
+    action ConditionalBranch(text condition, text trueLabel, text falseLabel)
+        EmitTerminator("br i1 " + condition + ", label %" + trueLabel + ", label %" + falseLabel)
+    end
+
+    /*
+        Opens a new basic block. If the previous block is still open, it
+        falls through into the new one.
+    */
+    action StartBlock(text label)
+        if not terminated
+            body:Append("  br label %" + label + lf)
+        end
+        body:Append(label + ":" + lf)
+        terminated = false
+    end
+
+    // =========================================================
+    // Types and values
+    // =========================================================
+
+    action GetLLVMType(Type type) returns text
+        if type = undefined
+            return "void"
+        end
+        if type:IsVoid()
+            return "void"
+        elseif type:IsInteger()
+            return "i32"
+        elseif type:IsNumber()
+            return "double"
+        elseif type:IsBoolean()
+            return "i1"
+        end
+        return "ptr"
+    end
+
+    action GetDefaultValue(text llvmType) returns text
+        if llvmType = "i32"
+            return "0"
+        elseif llvmType = "double"
+            return "0.0"
+        elseif llvmType = "i1"
+            return "false"
+        elseif llvmType = "ptr"
+            return "null"
+        end
+        return "undef"
+    end
+
+    action GetDefaultValue(Type type) returns text
+        return GetDefaultValue(GetLLVMType(type))
+    end
+
+    /*
+        Returns the stack slot for a local variable or parameter, creating it
+        (zero initialized) in the entry block the first time it is seen.
+    */
+    action GetLocalSlot(Variable variable) returns text
+        text llvmType = GetLLVMType(variable:GetType())
+        text key = variable:GetName() + "." + variable:GetBytecodeLocation() + "." + llvmType
+        if locals:HasKey(key)
+            return locals:GetValue(key)
+        end
+        text slot = "%v." + variable:GetName() + "." + localCounter
+        localCounter = localCounter + 1
+        entry:Append("  " + slot + " = alloca " + llvmType + lf)
+        entry:Append("  store " + llvmType + " " + GetDefaultValue(llvmType) + ", ptr " + slot + lf)
+        locals:Add(key, slot)
+        return slot
+    end
+
+    /*
+        Creates an anonymous stack slot (used for short circuit results and
+        loop counters, so no phi nodes are needed; mem2reg cleans this up).
+    */
+    action NewTemporarySlot(text llvmType) returns text
+        text slot = "%s." + localCounter
+        localCounter = localCounter + 1
+        entry:Append("  " + slot + " = alloca " + llvmType + lf)
+        entry:Append("  store " + llvmType + " " + GetDefaultValue(llvmType) + ", ptr " + slot + lf)
+        return slot
+    end
+
+    action LoadVariable(Variable variable) returns text
+        text llvmType = GetLLVMType(variable:GetType())
+        if variable:IsField()
+            text pointer = GetFieldPointer("%me", variable)
+            return EmitValue("load " + llvmType + ", ptr " + pointer)
+        end
+        text slot = GetLocalSlot(variable)
+        return EmitValue("load " + llvmType + ", ptr " + slot)
+    end
+
+    action StoreVariable(Variable variable, text value)
+        text llvmType = GetLLVMType(variable:GetType())
+        if variable:IsField()
+            text pointer = GetFieldPointer("%me", variable)
+            Emit("store " + llvmType + " " + value + ", ptr " + pointer)
+            return now
+        end
+        text slot = GetLocalSlot(variable)
+        Emit("store " + llvmType + " " + value + ", ptr " + slot)
+    end
+
+    action GetFieldPointer(text objectPointer, Variable field) returns text
+        Class owner = field:GetParentClass()
+        if owner = undefined
+            Unsupported("field " + field:GetName() + " has no owning class", undefined)
+            return "null"
+        end
+        text key = owner:GetStaticKey() + "|" + field:GetName()
+        if not fieldIndices:HasKey(key)
+            Unsupported("field " + field:GetName() + " of " + owner:GetStaticKey() + " is not in the compiled module", undefined)
+            return NewTemporarySlot(GetLLVMType(field:GetType()))
+        end
+        text index = fieldIndices:GetValue(key)
+        return EmitValue("getelementptr inbounds " + GetStructName(owner) + ", ptr " + objectPointer + ", i32 0, i32 " + index)
+    end
+
+    /*
+        Converts value from one Quorum type to another. Handles every pair of
+        primitives; anything involving objects is reported as unsupported.
+    */
+    action Convert(text value, Type from, Type to, Location location) returns text
+        if from = undefined or to = undefined
+            return value
+        end
+        if to:IsVoid()
+            return value
+        end
+
+        if from:IsUndefined()
+            if to:IsInteger() or to:IsNumber() or to:IsBoolean()
+                return GetDefaultValue(to)
+            end
+            return value
+        end
+
+        if to:IsInteger()
+            if from:IsInteger()
+                return value
+            elseif from:IsNumber()
+                return EmitValue("call i32 @llvm.fptosi.sat.i32.f64(double " + value + ")")
+            elseif from:IsBoolean()
+                return EmitValue("zext i1 " + value + " to i32")
+            elseif from:IsText()
+                return EmitValue("call i32 @quorum_text_to_integer(ptr " + value + ")")
+            end
+        elseif to:IsNumber()
+            if from:IsNumber()
+                return value
+            elseif from:IsInteger()
+                return EmitValue("sitofp i32 " + value + " to double")
+            elseif from:IsBoolean()
+                return EmitValue("uitofp i1 " + value + " to double")
+            elseif from:IsText()
+                return EmitValue("call double @quorum_text_to_number(ptr " + value + ")")
+            end
+        elseif to:IsBoolean()
+            if from:IsBoolean()
+                return value
+            elseif from:IsInteger()
+                return EmitValue("icmp ne i32 " + value + ", 0")
+            elseif from:IsNumber()
+                return EmitValue("fcmp une double " + value + ", 0.0")
+            elseif from:IsText()
+                text b = EmitValue("call i32 @quorum_text_to_boolean(ptr " + value + ")")
+                return EmitValue("icmp ne i32 " + b + ", 0")
+            end
+        elseif to:IsText()
+            if from:IsText()
+                return value
+            end
+            return ToText(value, from, location)
+        else
+            //object target: only object-to-object of the same representation is a no-op
+            if not from:IsPrimitive()
+                return value
+            end
+        end
+
+        return Unsupported("conversion from " + from:GetStaticKey() + " to " + to:GetStaticKey(), location)
+    end
+
+    action ToText(text value, Type type, Location location) returns text
+        if type = undefined
+            return value
+        end
+        if type:IsText() or type:IsUndefined()
+            return value
+        elseif type:IsInteger()
+            return EmitValue("call ptr @quorum_text_from_integer(i32 " + value + ")")
+        elseif type:IsNumber()
+            return EmitValue("call ptr @quorum_text_from_number(double " + value + ")")
+        elseif type:IsBoolean()
+            text widened = EmitValue("zext i1 " + value + " to i32")
+            return EmitValue("call ptr @quorum_text_from_boolean(i32 " + widened + ")")
+        end
+        Unsupported("converting an object of type " + type:GetStaticKey() + " to text", location)
+        return "null"
+    end
+
+    /*
+        Emits a comparison. Both sides are promoted to a common type first.
+    */
+    action Compare(integer operation, text left, Type leftType, text right, Type rightType, Location location) returns text
+        Operation op
+        boolean isText = false
+        boolean isNumber = false
+        boolean isInteger = false
+        boolean isBoolean = false
+
+        if leftType:IsText() or rightType:IsText()
+            isText = true
+        elseif leftType:IsNumber() or rightType:IsNumber()
+            isNumber = true
+        elseif leftType:IsInteger() or rightType:IsInteger()
+            isInteger = true
+        elseif leftType:IsBoolean() or rightType:IsBoolean()
+            isBoolean = true
+        end
+
+        if isText
+            if operation = op:EQUALS or operation = op:NOT_EQUALS
+                text equal = EmitValue("call i32 @quorum_text_equals(ptr " + left + ", ptr " + right + ")")
+                if operation = op:EQUALS
+                    return EmitValue("icmp ne i32 " + equal + ", 0")
+                end
+                return EmitValue("icmp eq i32 " + equal + ", 0")
+            end
+            text comparison = EmitValue("call i32 @quorum_text_compare(ptr " + left + ", ptr " + right + ")")
+            return EmitValue("icmp " + GetSignedPredicate(operation) + " i32 " + comparison + ", 0")
+        elseif isNumber
+            Type numberType
+            numberType:SetToNumber()
+            text l = Convert(left, leftType, numberType, location)
+            text r = Convert(right, rightType, numberType, location)
+            return EmitValue("fcmp " + GetFloatPredicate(operation) + " double " + l + ", " + r)
+        elseif isInteger
+            return EmitValue("icmp " + GetSignedPredicate(operation) + " i32 " + left + ", " + right)
+        elseif isBoolean
+            return EmitValue("icmp " + GetSignedPredicate(operation) + " i1 " + left + ", " + right)
+        end
+
+        //objects and undefined: reference comparison
+        if operation = op:EQUALS or operation = op:NOT_EQUALS
+            return EmitValue("icmp " + GetSignedPredicate(operation) + " ptr " + left + ", " + right)
+        end
+        return Unsupported("ordering comparison between objects", location)
+    end
+
+    action GetSignedPredicate(integer operation) returns text
+        Operation op
+        if operation = op:EQUALS
+            return "eq"
+        elseif operation = op:NOT_EQUALS
+            return "ne"
+        elseif operation = op:GREATER
+            return "sgt"
+        elseif operation = op:GREATER_EQUALS
+            return "sge"
+        elseif operation = op:LESS
+            return "slt"
+        elseif operation = op:LESS_EQUALS
+            return "sle"
+        end
+        return "eq"
+    end
+
+    action GetFloatPredicate(integer operation) returns text
+        Operation op
+        if operation = op:EQUALS
+            return "oeq"
+        elseif operation = op:NOT_EQUALS
+            return "une"
+        elseif operation = op:GREATER
+            return "ogt"
+        elseif operation = op:GREATER_EQUALS
+            return "oge"
+        elseif operation = op:LESS
+            return "olt"
+        elseif operation = op:LESS_EQUALS
+            return "ole"
+        end
+        return "oeq"
+    end
+
+    /*
+        Records a warning and emits a call that aborts at runtime with the
+        same message. Returns undef so callers can keep going.
+    */
+    action Unsupported(text message, Location location) returns text
+        text full = "LLVM backend: unsupported " + message
+        if location not= undefined
+            full = full + " (line " + location:GetLineNumber() + ")"
+        end
+        warnings:Add(full)
+        text name = GetStringConstant(full)
+        Emit("call void @quorum_unsupported(ptr " + name + ")")
+        return "undef"
+    end
+
+    // =========================================================
+    // Constants
+    // =========================================================
+
+    action FormatInteger(integer value) returns text
+        return "" + value
+    end
+
+    action FormatBoolean(boolean value) returns text
+        if value
+            return "true"
+        end
+        return "false"
+    end
+
+    /*
+        LLVM only accepts decimal floating point literals that are exactly
+        representable, so numbers are emitted as the 64 bit IEEE pattern in hex.
+    */
+    action FormatNumber(number value) returns text
+        if value not= value
+            return "0x7FF8000000000000"
+        end
+        if value = 0.0
+            return "0.0"
+        end
+
+        boolean negative = value < 0.0
+        number v = value
+        if negative
+            v = -v
+        end
+
+        if v - v not= 0.0 //infinity
+            if negative
+                return "0xFFF0000000000000"
+            end
+            return "0x7FF0000000000000"
+        end
+
+        integer exponent = 0
+        repeat while v >= 2.0
+            v = v / 2.0
+            exponent = exponent + 1
+        end
+        repeat while v < 1.0 and exponent > -1022
+            v = v * 2.0
+            exponent = exponent - 1
+        end
+
+        number two52 = 1.0
+        repeat 52 times
+            two52 = two52 * 2.0
+        end
+        number two32 = 1.0
+        repeat 32 times
+            two32 = two32 * 2.0
+        end
+
+        integer biased = 0
+        number mantissa = 0.0
+        if v >= 1.0
+            biased = exponent + 1023
+            mantissa = (v - 1.0) * two52
+        else
+            biased = 0
+            mantissa = v * two52
+        end
+
+        Math math
+        number mantissaHigh = math:Floor(mantissa / two32)
+        number low = mantissa - mantissaHigh * two32
+        number high = biased * 1048576.0 + mantissaHigh
+        if negative
+            high = high + 2147483648.0
+        end
+        return "0x" + ToHex(high, 8) + ToHex(low, 8)
+    end
+
+    private action ToHex(number value, integer digits) returns text
+        Math math
+        text result = ""
+        number remaining = value
+        repeat digits times
+            number quotient = math:Floor(remaining / 16.0)
+            integer digit = cast(integer, remaining - quotient * 16.0)
+            result = hexDigits:GetCharacter(digit) + result
+            remaining = quotient
+        end
+        return result
+    end
+
+    private action HexByte(integer value) returns text
+        return "\" + hexDigits:GetCharacter(value / 16) + hexDigits:GetCharacter(value mod 16)
+    end
+
+    /*
+        Returns a pointer to a NUL terminated UTF-8 global holding value.
+        Quorum text is UTF-16, so surrogate pairs are combined first.
+    */
+    action GetStringConstant(text value) returns text
+        if stringConstants:HasKey(value)
+            return stringConstants:GetValue(value)
+        end
+
+        TextBuilder encoded
+        integer length = 0
+        integer size = value:GetSize()
+        integer i = 0
+        repeat while i < size
+            integer code = value:GetUnicodeInteger(i)
+            if code >= 55296 and code <= 56319 and i + 1 < size
+                integer low = value:GetUnicodeInteger(i + 1)
+                if low >= 56320 and low <= 57343
+                    code = 65536 + (code - 55296) * 1024 + (low - 56320)
+                    i = i + 1
+                end
+            end
+
+            if code < 128
+                if code >= 32 and code < 127 and code not= 34 and code not= 92
+                    encoded:Append(value:GetCharacter(i))
+                else
+                    encoded:Append(HexByte(code))
+                end
+                length = length + 1
+            elseif code < 2048
+                encoded:Append(HexByte(192 + code / 64))
+                encoded:Append(HexByte(128 + code mod 64))
+                length = length + 2
+            elseif code < 65536
+                encoded:Append(HexByte(224 + code / 4096))
+                encoded:Append(HexByte(128 + (code / 64) mod 64))
+                encoded:Append(HexByte(128 + code mod 64))
+                length = length + 3
+            else
+                encoded:Append(HexByte(240 + code / 262144))
+                encoded:Append(HexByte(128 + (code / 4096) mod 64))
+                encoded:Append(HexByte(128 + (code / 64) mod 64))
+                encoded:Append(HexByte(128 + code mod 64))
+                length = length + 4
+            end
+            i = i + 1
+        end
+
+        text name = "@.str." + stringCounter
+        stringCounter = stringCounter + 1
+        globals:Append(name + " = private unnamed_addr constant [" + (length + 1) + " x i8] c" + dq + encoded:ToText() + "\00" + dq + lf)
+        stringConstants:Add(value, name)
+        return name
+    end
+end
