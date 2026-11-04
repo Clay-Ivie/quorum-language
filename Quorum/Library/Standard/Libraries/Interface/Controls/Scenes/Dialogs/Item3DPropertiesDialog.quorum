@@ -101,9 +101,11 @@ class Item3DPropertiesDialog is PropertiesDialog
         nameField:SetText("")
         nameField:SetFocusable(true)
         nameField:AddTextChangeListener(me)
+        WatchNameField(nameField)
         nameContainer:Add(nameField)
         focusArray:Add(nameField)
         panel:Add(nameContainer)
+        AddNameWarning(panel)
 
         Label positionLabel
         
@@ -698,6 +700,8 @@ FlowLayout responseGroupLayout
 
         if current:GetRed() not= start:GetRed() or current:GetGreen() not= start:GetGreen() or current:GetBlue() not= start:GetBlue() or current:GetAlpha() not= start:GetAlpha()
             GetSceneEditor():RecordColorChange(model, start, current)
+            // Say which palette color the typed values are, or the closest one for a custom color.
+            GetSceneEditor():NotifyAccessibility(me, "Color " + GetSceneEditor():GetColorDescription(current))
         end
     end
 
@@ -719,6 +723,7 @@ FlowLayout responseGroupLayout
         end
 
         SetFields(cast(EditorItem3D, item))
+        UpdateNameWarning(false)
     end
 
     /*
@@ -975,5 +980,6 @@ FlowLayout responseGroupLayout
         nameField:RemoveTextChangeListener(me)
         nameField:SetText(name)
         nameField:AddTextChangeListener(me)
+        UpdateNameWarning(false)
     end
 end

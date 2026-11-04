@@ -4,6 +4,8 @@ use Libraries.Interface.Events.SelectionListener
 use Libraries.Interface.Events.TextChangeListener
 use Libraries.Interface.Controls.Dialog
 use Libraries.Interface.Controls.Control
+use Libraries.Interface.Controls.TextField
+use Libraries.Game.Graphics.Label
 use Libraries.Containers.Array
 use Libraries.Interface.Views.LabelBoxView
 use Libraries.Game.Graphics.Color
@@ -23,6 +25,12 @@ class PropertiesDialog is Dialog, SelectionListener, TextChangeListener
 
     boolean initialized = false
     SceneEditor editor = undefined
+    TextField watchedNameField = undefined
+    text nameWhenFocused = ""
+    NameFieldFocusListener nameFieldFocusListener
+    Control nameWarningContainer
+    Label nameWarningLabel
+    boolean nameWarningShowing = false
 
     on create
         SetInputGroup("PropertiesDialog")
@@ -96,6 +104,92 @@ class PropertiesDialog is Dialog, SelectionListener, TextChangeListener
     */
     action GetSceneEditor returns SceneEditor
         return editor
+    end
+
+    /*
+        Starts watching the given Name field, so leaving it with a name another item already uses
+        gives a warning. The name is still applied; the warning only tells the user about it.
+    */
+    action WatchNameField(TextField field)
+        watchedNameField = field
+        nameFieldFocusListener:SetDialog(me)
+        field:AddFocusListener(nameFieldFocusListener)
+    end
+
+    /*
+        Remembers the name when the Name field gains focus, so a warning is only given if it changes.
+    */
+    action StartNameEditing
+        if watchedNameField not= undefined
+            nameWhenFocused = watchedNameField:GetText()
+        end
+    end
+
+    /*
+        Updates the warning under the Name field when the field loses focus. If the name was
+        changed to one another item already has, the warning is also read by the screen reader.
+    */
+    action FinishNameEditing
+        if watchedNameField = undefined
+            return now
+        end
+
+        text name = watchedNameField:GetText()
+        boolean changed = name not= nameWhenFocused
+        nameWhenFocused = name
+        UpdateNameWarning(changed)
+    end
+
+    /*
+        Adds the space for the duplicate name warning to the panel. Call this right after adding
+        the Name field's row, so the warning appears under it. The space has no height until a
+        warning is shown.
+    */
+    action AddNameWarning(Control panel)
+        FlowLayout warningLayout
+        nameWarningContainer:SetLayout(warningLayout)
+        nameWarningContainer:SetPercentageWidth(1.0)
+        nameWarningContainer:SetVerticalLayoutMode(nameWarningContainer:FIT_CONTENTS)
+        nameWarningContainer:SetLeftMargin(20)
+        nameWarningContainer:SetRightMargin(30)
+
+        Color warningColor
+        warningColor:SetColor(0.85, 0.1, 0.1, 1.0)
+        nameWarningLabel:SetText("Warning: another item already has this name")
+        nameWarningLabel:SetFontColor(warningColor)
+        nameWarningLabel:SetBottomMargin(10)
+
+        panel:Add(nameWarningContainer)
+    end
+
+    /*
+        Shows the warning under the Name field if its name is used by another item in the same
+        layer, and hides it otherwise. If announce is true and the warning is shown, the screen
+        reader also reads it. Dialogs call this with announce set to false after filling in their
+        fields for a newly selected item.
+    */
+    action UpdateNameWarning(boolean announce)
+        if watchedNameField = undefined or editor = undefined
+            return now
+        end
+
+        text name = watchedNameField:GetText()
+        boolean duplicate = false
+        if name not= undefined and name:IsEmpty() = false
+            duplicate = editor:IsNameUsedByAnotherItem(editor:GetSelectedItem(), name)
+        end
+
+        if duplicate and nameWarningShowing = false
+            nameWarningContainer:Add(nameWarningLabel)
+            nameWarningShowing = true
+        elseif duplicate = false and nameWarningShowing
+            nameWarningContainer:Remove(nameWarningLabel)
+            nameWarningShowing = false
+        end
+
+        if duplicate and announce
+            editor:NotifyAccessibility(watchedNameField, "Warning: another item is already named " + name)
+        end
     end
 
     /*

@@ -79,9 +79,11 @@ class Audio3DPropertiesDialog is PropertiesDialog
         nameField:SetText("")
         nameField:SetFocusable(true)
         nameField:AddTextChangeListener(me)
+        WatchNameField(nameField)
         nameContainer:Add(nameField)
         focusArray:Add(nameField)
         panel:Add(nameContainer)
+        AddNameWarning(panel)
 
         Label sourceLabel
         TextField sourceField
@@ -469,6 +471,7 @@ class Audio3DPropertiesDialog is PropertiesDialog
         end
 
         SetFields(cast(EditorItem3D, item))
+        UpdateNameWarning(false)
     end
 
     /*

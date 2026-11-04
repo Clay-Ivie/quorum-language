@@ -70,9 +70,11 @@ class PointLightPropertiesDialog is PropertiesDialog
         nameField:SetText("")
         nameField:SetFocusable(true)
         nameField:AddTextChangeListener(me)
+        WatchNameField(nameField)
         nameContainer:Add(nameField)
         focusArray:Add(nameField)
         panel:Add(nameContainer)
+        AddNameWarning(panel)
 
         Label positionLabel
         
@@ -270,6 +272,7 @@ class PointLightPropertiesDialog is PropertiesDialog
         end
 
         SetFields(cast(EditorItem3D, item))
+        UpdateNameWarning(false)
     end
 
     /*

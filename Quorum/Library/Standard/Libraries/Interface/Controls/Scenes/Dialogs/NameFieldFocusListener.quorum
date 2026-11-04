@@ -1,0 +1,29 @@
+package Libraries.Interface.Controls.Scenes.Dialogs
+
+use Libraries.Interface.Events.FocusListener
+use Libraries.Interface.Events.FocusEvent
+
+/*
+    The NameFieldFocusListener class watches the Name field in a properties dialog. When the field
+    loses focus after its text was changed, the dialog warns if another item already has that name.
+    The warning waits until the field loses focus so it is not given for partial names while typing.
+*/
+class NameFieldFocusListener is FocusListener
+    PropertiesDialog dialog = undefined
+
+    action SetDialog(PropertiesDialog propertiesDialog)
+        dialog = propertiesDialog
+    end
+
+    action GainedFocus(FocusEvent event)
+        if dialog not= undefined
+            dialog:StartNameEditing()
+        end
+    end
+
+    action LostFocus(FocusEvent event)
+        if dialog not= undefined
+            dialog:FinishNameEditing()
+        end
+    end
+end

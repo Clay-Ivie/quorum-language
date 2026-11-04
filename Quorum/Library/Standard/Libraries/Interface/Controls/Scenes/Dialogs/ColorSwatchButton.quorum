@@ -2,16 +2,41 @@ package Libraries.Interface.Controls.Scenes.Dialogs
 
 use Libraries.Interface.Controls.Button
 use Libraries.Interface.Events.FocusEvent
+use Libraries.Interface.Events.BehaviorEvent
 use Libraries.Game.Graphics.Color
 
 /*
     The ColorSwatchButton class is a swatch in the color picker. It shows a black border while it has
-    focus, so the swatch being tabbed to can be seen.
+    focus, so the swatch being tabbed to can be seen. Screen readers hear only the color name. Any
+    accessibility role adds a word after the name ("button", or "custom" for a plain item), so the
+    swatch is not exposed to screen readers at all, and the color picker announces its name when it
+    gains focus instead.
 */
 class ColorSwatchButton is Button
 
+    ColorPickerDialog pickerDialog = undefined
+
+    on create
+        SetAccessibilityCode(parent:Item:NOT_ACCESSIBLE)
+    end
+
     /*
-        Shows the focus border when the swatch gains focus.
+        Sets the color picker that announces this swatch's name when it gains focus.
+    */
+    action SetPickerDialog(ColorPickerDialog dialog)
+        pickerDialog = dialog
+    end
+
+    /*
+        Runs the swatch's behavior. This skips Button's accessibility notification, which only works
+        for items exposed to screen readers as buttons.
+    */
+    action Activate(BehaviorEvent event)
+        parent:Control:Activate(event)
+    end
+
+    /*
+        Shows the focus border and announces the color name when the swatch gains focus.
     */
     action GainedFocus(FocusEvent event)
         parent:Button:GainedFocus(event)
@@ -19,6 +44,10 @@ class ColorSwatchButton is Button
         border:SetColor(0.0, 0.0, 0.0, 1.0)
         SetBorderColor(border)
         SetBorderThickness(3)
+
+        if pickerDialog not= undefined
+            pickerDialog:AnnounceSwatch(me)
+        end
     end
 
     /*

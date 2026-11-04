@@ -20,6 +20,12 @@ class SceneColorNames
     Array<number> lightnesses
     Array<number> greenRedValues
     Array<number> blueYellowValues
+    // Each named color's red, green, and blue values from 0 to 255, used to find exact palette matches.
+    Array<integer> redValues
+    Array<integer> greenValues
+    Array<integer> blueValues
+    // True for the colors that are swatches in the color picker.
+    Array<boolean> inPalette
     Math math
 
     on create
@@ -29,14 +35,14 @@ class SceneColorNames
         AddHueRow(0.3, "Dark ")
 
         // The color picker's grays.
-        AddColor("Black", 0.0, 0.0, 0.0)
-        AddColor("Very Dark Gray", 0.14, 0.14, 0.14)
-        AddColor("Dark Gray", 0.29, 0.29, 0.29)
-        AddColor("Medium Dark Gray", 0.43, 0.43, 0.43)
-        AddColor("Medium Light Gray", 0.57, 0.57, 0.57)
-        AddColor("Light Gray", 0.71, 0.71, 0.71)
-        AddColor("Very Light Gray", 0.86, 0.86, 0.86)
-        AddColor("White", 1.0, 1.0, 1.0)
+        AddPaletteColor("Black", 0.0, 0.0, 0.0)
+        AddPaletteColor("Very Dark Gray", 0.14, 0.14, 0.14)
+        AddPaletteColor("Dark Gray", 0.29, 0.29, 0.29)
+        AddPaletteColor("Medium Dark Gray", 0.43, 0.43, 0.43)
+        AddPaletteColor("Medium Light Gray", 0.57, 0.57, 0.57)
+        AddPaletteColor("Light Gray", 0.71, 0.71, 0.71)
+        AddPaletteColor("Very Light Gray", 0.86, 0.86, 0.86)
+        AddPaletteColor("White", 1.0, 1.0, 1.0)
 
         // Common colors the picker doesn't have.
         AddColor("Pink", 1.0, 0.75, 0.8)
@@ -68,22 +74,70 @@ class SceneColorNames
         the closest named color.
     */
     action GetName(number red, number green, number blue) returns text
+        return names:Get(GetClosestIndex(red, green, blue, false))
+    end
+
+    /*
+        Returns how a screen reader should describe a color typed in as red, green, and blue values.
+        A color that matches a color picker swatch gets the swatch's name, such as "Dark Blue". Any
+        other color is a custom color, described with the closest swatch, such as "Custom, closest
+        to Dark Blue".
+    */
+    action GetDescription(Color color) returns text
+        if color = undefined
+            return "no color"
+        end
+        return GetDescription(color:GetRed(), color:GetGreen(), color:GetBlue())
+    end
+
+    /*
+        Returns the description of the color with these red, green, and blue values, each from 0 to 1.
+        See GetDescription(Color).
+    */
+    action GetDescription(number red, number green, number blue) returns text
+        integer red255 = ToByte(red)
+        integer green255 = ToByte(green)
+        integer blue255 = ToByte(blue)
+        integer index = 0
+        repeat while index < names:GetSize()
+            if inPalette:Get(index) and redValues:Get(index) = red255 and greenValues:Get(index) = green255 and blueValues:Get(index) = blue255
+                return names:Get(index)
+            end
+            index = index + 1
+        end
+        return "Custom, closest to " + names:Get(GetClosestIndex(red, green, blue, true))
+    end
+
+    /*
+        Returns the index of the named color that looks closest to the given color. If paletteOnly is
+        true, only the color picker's swatches are considered.
+    */
+    private action GetClosestIndex(number red, number green, number blue, boolean paletteOnly) returns integer
         Array<number> lab = ToLab(red, green, blue)
         integer closest = 0
         number closestDistance = -1.0
         integer index = 0
         repeat while index < names:GetSize()
-            number lightnessChange = lab:Get(0) - lightnesses:Get(index)
-            number greenRedChange = lab:Get(1) - greenRedValues:Get(index)
-            number blueYellowChange = lab:Get(2) - blueYellowValues:Get(index)
-            number distance = lightnessChange * lightnessChange + greenRedChange * greenRedChange + blueYellowChange * blueYellowChange
-            if closestDistance < 0 or distance < closestDistance
-                closest = index
-                closestDistance = distance
+            if paletteOnly = false or inPalette:Get(index)
+                number lightnessChange = lab:Get(0) - lightnesses:Get(index)
+                number greenRedChange = lab:Get(1) - greenRedValues:Get(index)
+                number blueYellowChange = lab:Get(2) - blueYellowValues:Get(index)
+                number distance = lightnessChange * lightnessChange + greenRedChange * greenRedChange + blueYellowChange * blueYellowChange
+                if closestDistance < 0 or distance < closestDistance
+                    closest = index
+                    closestDistance = distance
+                end
             end
             index = index + 1
         end
-        return names:Get(closest)
+        return closest
+    end
+
+    /*
+        Converts a channel from 0 to 1 into the whole number from 0 to 255 shown in the color fields.
+    */
+    private action ToByte(number channel) returns integer
+        return cast(integer, math:RoundToNearestInteger(channel * 255.0))
     end
 
     /*
@@ -131,19 +185,28 @@ class SceneColorNames
         Adds one row of the color picker's hues. This must match ColorPickerDialog's AddHueRow.
     */
     private action AddHueRow(number brightness, text prefix)
-        AddColor(prefix + "Red", brightness, 0.0, 0.0)
-        AddColor(prefix + "Orange", brightness, 0.5 * brightness, 0.0)
-        AddColor(prefix + "Yellow", brightness, brightness, 0.0)
-        AddColor(prefix + "Green", 0.0, 0.7 * brightness, 0.0)
-        AddColor(prefix + "Cyan", 0.0, brightness, brightness)
-        AddColor(prefix + "Blue", 0.0, 0.0, brightness)
-        AddColor(prefix + "Purple", 0.5 * brightness, 0.0, 0.8 * brightness)
-        AddColor(prefix + "Magenta", brightness, 0.0, brightness)
+        AddPaletteColor(prefix + "Red", brightness, 0.0, 0.0)
+        AddPaletteColor(prefix + "Orange", brightness, 0.5 * brightness, 0.0)
+        AddPaletteColor(prefix + "Yellow", brightness, brightness, 0.0)
+        AddPaletteColor(prefix + "Green", 0.0, 0.7 * brightness, 0.0)
+        AddPaletteColor(prefix + "Cyan", 0.0, brightness, brightness)
+        AddPaletteColor(prefix + "Blue", 0.0, 0.0, brightness)
+        AddPaletteColor(prefix + "Purple", 0.5 * brightness, 0.0, 0.8 * brightness)
+        AddPaletteColor(prefix + "Magenta", brightness, 0.0, brightness)
+    end
+
+    private action AddPaletteColor(text name, number red, number green, number blue)
+        AddColor(name, red, green, blue)
+        inPalette:Set(inPalette:GetSize() - 1, true)
     end
 
     private action AddColor(text name, number red, number green, number blue)
         Array<number> lab = ToLab(red, green, blue)
         names:Add(name)
+        redValues:Add(ToByte(red))
+        greenValues:Add(ToByte(green))
+        blueValues:Add(ToByte(blue))
+        inPalette:Add(false)
         lightnesses:Add(lab:Get(0))
         greenRedValues:Add(lab:Get(1))
         blueYellowValues:Add(lab:Get(2))

@@ -213,9 +213,6 @@ class SceneEditor is Control, DefaultSceneManager
     // The last items copied with CopyItems, stored as JSON so they can be pasted with PasteCopiedItem.
     Array<JavaScriptObjectNotation> copiedItemsJson
 
-    // How far along the X axis pasted items are moved, so they sit beside the copied items as a group.
-    number copiedItemsOffsetX = 0
-
     // The 3D item grabbed with the mouse, or undefined if the mouse is not dragging an item.
     Item3D mouseDragItem = undefined
 
@@ -1760,7 +1757,7 @@ action Update(number seconds)
             end
 
             Item2D copy2D = parent:DefaultSceneManager:LoadItem2D(json)
-            copy2D:SetName(original:GetName() + " Copy")
+            copy2D:SetName(GetCopyName(layer, original:GetName()))
             copy2D:SetPosition(original:GetX() + original:GetWidth(), original:GetY())
             copy = copy2D
         else
@@ -1828,20 +1825,121 @@ action Update(number seconds)
     since the selection highlights share the names of the items they highlight.
     */
     private action NameExistsInLayer(EditorLayer layer, text name) returns boolean
-        if layer is EditorLayer3D = false
-            return false
-        end
+        return NameExistsInLayer(layer, name, undefined)
+    end
 
+    /*
+    This action returns true if an item in the layer other than the skipped one has the given name.
+    Editor items are skipped, since the selection highlights share the names of the items they highlight.
+    */
+    private action NameExistsInLayer(EditorLayer layer, text name, Item skip) returns boolean
         SceneConstants constants
-        EditorLayer3D layer3D = cast(EditorLayer3D, layer)
-        Iterator<Item3D> items = layer3D:GetIterator()
-        repeat while items:HasNext()
-            Item3D item = items:Next()
-            if item:HasProperty(constants:EDITOR_TAG) = false and item:GetName() = name
-                return true
+        if layer is EditorLayer3D
+            EditorLayer3D layer3D = cast(EditorLayer3D, layer)
+            Iterator<Item3D> items = layer3D:GetIterator()
+            repeat while items:HasNext()
+                Item3D item = items:Next()
+                if item:HasProperty(constants:EDITOR_TAG) = false and item:GetName() = name
+                    if skip = undefined or item:Equals(skip) = false
+                        return true
+                    end
+                end
+            end
+        elseif layer is EditorLayer2D
+            EditorLayer2D layer2D = cast(EditorLayer2D, layer)
+            Iterator<Item2D> items2D = layer2D:GetIterator()
+            repeat while items2D:HasNext()
+                Item2D item2D = items2D:Next()
+                if item2D:HasProperty(constants:EDITOR_TAG) = false and item2D:GetName() = name
+                    if skip = undefined or item2D:Equals(skip) = false
+                        return true
+                    end
+                end
             end
         end
         return false
+    end
+
+    /*
+    This action returns true if another item in the same layer as the given item already has the
+    given name. The item can be a selection highlight, in which case the highlighted item is used.
+    */
+    action IsNameUsedByAnotherItem(Item item, text name) returns boolean
+        if item = undefined or name = undefined
+            return false
+        end
+
+        Item target = item
+        if item is SelectionHighlight
+            SelectionHighlight highlight = cast(SelectionHighlight, item)
+            if highlight:GetItem() not= undefined
+                target = highlight:GetItem()
+            end
+        end
+
+        EditorLayer layer = undefined
+        if target is Item3D
+            Item3D target3D = cast(Item3D, target)
+            if target3D:GetLayer() is EditorLayer3D
+                layer = cast(EditorLayer3D, target3D:GetLayer())
+            end
+        elseif target is Item2D
+            Item2D target2D = cast(Item2D, target)
+            if target2D:GetLayer() is EditorLayer2D
+                layer = cast(EditorLayer2D, target2D:GetLayer())
+            end
+        end
+
+        if layer = undefined
+            return false
+        end
+        return NameExistsInLayer(layer, name, target)
+    end
+
+    /*
+    This action returns the given name if no item in the layer uses it yet. Otherwise it returns
+    the name with the first unused number after it. A number already at the end is counted up, so
+    "Box 2" becomes "Box 3" rather than "Box 2 2".
+    */
+    private action GetUniqueName(EditorLayer layer, text name) returns text
+        if name = undefined or NameExistsInLayer(layer, name) = false
+            return name
+        end
+
+        text baseName = name
+        integer nextNumber = 2
+        Array<text> words = name:Split(" ")
+        if words:GetSize() > 1
+            text lastWord = words:Get(words:GetSize() - 1)
+            if IsWholeNumber(lastWord)
+                baseName = name:GetSubtext(0, name:GetSize() - lastWord:GetSize() - 1)
+                nextNumber = lastWord:ParseInteger() + 1
+            end
+        end
+
+        repeat while NameExistsInLayer(layer, baseName + " " + nextNumber)
+            nextNumber = nextNumber + 1
+        end
+        return baseName + " " + nextNumber
+    end
+
+    /*
+    This action returns true if the text is made only of the digits 0 through 9.
+    */
+    private action IsWholeNumber(text value) returns boolean
+        // Long digit runs could overflow ParseInteger, so they are treated as part of the name.
+        if value:IsEmpty() or value:GetSize() > 9
+            return false
+        end
+        text digits = "0123456789"
+        integer index = 0
+        repeat while index < value:GetSize()
+            if digits:Contains(value:GetCharacter(index)) = false
+                return false
+            end
+            index = index + 1
+        end
+        return true
     end
 
     /*
@@ -1866,21 +1964,11 @@ action Update(number seconds)
         end
 
         Array<JavaScriptObjectNotation> copies
-        number minX = 0
-        number maxX = 0
         integer counter = 0
         repeat while counter < items:GetSize()
             Item item = items:Get(counter)
             if item is Item3D
                 Item3D original = cast(Item3D, item)
-                number left = original:GetX() - original:GetWidth() * 0.5
-                number right = original:GetX() + original:GetWidth() * 0.5
-                if copies:IsEmpty() or left < minX
-                    minX = left
-                end
-                if copies:IsEmpty() or right > maxX
-                    maxX = right
-                end
                 copies:Add(WrapArrayProperties(SaveItem3D(original)))
             end
             counter = counter + 1
@@ -1888,15 +1976,16 @@ action Update(number seconds)
 
         if copies:IsEmpty() = false
             copiedItemsJson = copies
-            copiedItemsOffsetX = maxX - minX
         end
     end
 
     /*
-    This action pastes the last copied items into the selected 3D layer. The pasted items keep
-    their positions relative to each other and are moved together along the X axis so they sit
-    beside the copied items. They are selected, and recorded as a single insert edit so one undo
-    removes all of them. Nothing happens if no items have been copied or the selected layer is not 3D.
+    This action pastes the last copied items into the selected 3D layer. The pasted items are
+    placed at the selected item, or at the cursor if no item is selected. When several items are
+    pasted, the center of the group is placed there and the items keep their positions relative
+    to each other. The selection and focus stay on whatever was selected before pasting. The
+    pasted items are recorded as a single insert edit so one undo removes all of them.
+    Nothing happens if no items have been copied or the selected layer is not 3D.
     */
     action PasteCopiedItem
         EditorLayer layer = GetSelectedLayer()
@@ -1904,12 +1993,57 @@ action Update(number seconds)
             return now
         end
 
-        Array<Item> pasted
+        Item3D target = GetPasteTarget(cast(EditorLayer3D, layer))
+
+        // Load every copy first so the center of the group is known before anything is moved.
+        Array<Item3D> copies
+        number minX = 0
+        number maxX = 0
+        number minY = 0
+        number maxY = 0
+        number minZ = 0
+        number maxZ = 0
         integer counter = 0
         repeat while counter < copiedItemsJson:GetSize()
             Item3D copy3D = LoadItem3D(copiedItemsJson:Get(counter))
-            copy3D:SetName(copy3D:GetName() + " Copy")
-            copy3D:SetPosition(copy3D:GetX() + copiedItemsOffsetX, copy3D:GetY(), copy3D:GetZ())
+            if counter = 0 or copy3D:GetX() < minX
+                minX = copy3D:GetX()
+            end
+            if counter = 0 or copy3D:GetX() > maxX
+                maxX = copy3D:GetX()
+            end
+            if counter = 0 or copy3D:GetY() < minY
+                minY = copy3D:GetY()
+            end
+            if counter = 0 or copy3D:GetY() > maxY
+                maxY = copy3D:GetY()
+            end
+            if counter = 0 or copy3D:GetZ() < minZ
+                minZ = copy3D:GetZ()
+            end
+            if counter = 0 or copy3D:GetZ() > maxZ
+                maxZ = copy3D:GetZ()
+            end
+            copies:Add(copy3D)
+            counter = counter + 1
+        end
+
+        number shiftX = 0
+        number shiftY = 0
+        number shiftZ = 0
+        if target not= undefined
+            shiftX = target:GetGlobalX() - (minX + maxX) * 0.5
+            shiftY = target:GetGlobalY() - (minY + maxY) * 0.5
+            shiftZ = target:GetGlobalZ() - (minZ + maxZ) * 0.5
+        end
+
+        Array<Item> pasted
+        counter = 0
+        repeat while counter < copies:GetSize()
+            Item3D copy3D = copies:Get(counter)
+            // Each pasted item is added before the next is named, so items pasted together get different numbers.
+            copy3D:SetName(GetCopyName(layer, copy3D:GetName()))
+            copy3D:SetPosition(copy3D:GetX() + shiftX, copy3D:GetY() + shiftY, copy3D:GetZ() + shiftZ)
             AddToLayer(layer, copy3D)
             pasted:Add(copy3D)
             counter = counter + 1
@@ -1919,13 +2053,35 @@ action Update(number seconds)
         edit:Create(me, layer, pasted)
         editManager:Add(edit)
 
+        // The selection and focus are left alone, so the announcement comes from the item that has focus.
         if pasted:GetSize() = 1
-            NotifyAccessibility(pasted:Get(0), "Pasted " + pasted:Get(0):GetName())
+            AnnounceToFocusedItem("Pasted " + pasted:Get(0):GetName())
         else
-            NotifyAccessibility(pasted:Get(0), "Pasted " + pasted:GetSize() + " items")
+            AnnounceToFocusedItem("Pasted " + pasted:GetSize() + " items")
+        end
+    end
+
+    /*
+    This action returns where pasted items should go: the selected 3D item, or the layer's cursor
+    if no 3D item is selected. A selection highlight counts as the item it highlights. The camera
+    item is skipped, so pasting while it is selected uses the cursor.
+    */
+    private action GetPasteTarget(EditorLayer3D layer) returns Item3D
+        Object selected = GetSelectedItem()
+        if selected is SelectionHighlight
+            SelectionHighlight highlight = cast(SelectionHighlight, selected)
+            selected = highlight:GetItem()
         end
 
-        SetFilteredItems(pasted, true)
+        if selected not= undefined and selected is Item3D and (selected is CameraItem) = false
+            return cast(Item3D, selected)
+        end
+
+        Object cursor = layer:GetCursor()
+        if cursor is Item3D
+            return cast(Item3D, cursor)
+        end
+        return undefined
     end
 
     action CreateItemPreview(ItemBlueprint schematic) returns ItemPreview
@@ -2105,6 +2261,8 @@ action Update(number seconds)
             previewTransform = preview:GetTransform()
             EditorLayer3D layer = cast(EditorLayer3D, GetSelectedLayer())
             resultLayer = layer
+            // A loaded scene or a renamed item can already use the preview's name.
+            model:SetName(GetUniqueName(layer, model:GetName()))
             layer:Add(model)
         elseif newItem is ItemPreview2D
             ItemPreview2D preview = cast(ItemPreview2D, newItem)
@@ -2113,6 +2271,7 @@ action Update(number seconds)
 
             EditorLayer2D layer = cast(EditorLayer2D, GetSelectedLayer())
             resultLayer = layer
+            drawable:SetName(GetUniqueName(layer, drawable:GetName()))
             layer:Add(drawable)
         end
 
@@ -2957,7 +3116,7 @@ action Update(number seconds)
         ChangeItemColor(target, color)
 
         SelectEyeDropperTarget(target)
-        AnnounceAfterFocus("Copied " + colorNames:GetName(color) + " from " + GetEyeDropperName(source) + " to " + GetEyeDropperName(target))
+        AnnounceAfterFocus("Copied " + colorNames:GetDescription(color) + " from " + GetEyeDropperName(source) + " to " + GetEyeDropperName(target))
     end
 
     /*
@@ -3012,7 +3171,15 @@ action Update(number seconds)
         Tells screen readers the object's name and the name of its color, after the given text.
     */
     action AnnounceItemColor(EditorModel item, text prefix)
-        NotifyAccessibility(me, prefix + GetEyeDropperName(item) + " is " + colorNames:GetName(item:GetColor()))
+        NotifyAccessibility(me, prefix + GetEyeDropperName(item) + " is " + GetColorDescription(item:GetColor()))
+    end
+
+    /*
+        Returns how a screen reader should describe a color: the name of the matching color picker
+        swatch, or "Custom, closest to" the nearest swatch for any other color.
+    */
+    action GetColorDescription(Color color) returns text
+        return colorNames:GetDescription(color)
     end
 
     private action SelectEyeDropperTarget(EditorModel target)
@@ -3068,6 +3235,26 @@ action Update(number seconds)
 
     action SetSelectedItem(EditorItem item)
         selection:SetSelection(item)
+        AnnounceSelectedColor(item)
+    end
+
+    /*
+        Tells screen readers the color of a newly selected object, such as a box or sphere, after its
+        name has been read. Screen readers only read the selection's name when it gains focus, so the
+        color is announced separately. Items without a color, such as lights, say nothing extra.
+    */
+    private action AnnounceSelectedColor(EditorItem item)
+        EditorModel model = undefined
+        if item is ModelSelectionHighlight
+            ModelSelectionHighlight highlight = cast(ModelSelectionHighlight, item)
+            model = highlight:GetEditorModel()
+        elseif item is EditorModel
+            model = cast(EditorModel, cast(Object, item))
+        end
+
+        if model not= undefined and model:GetColor() not= undefined
+            AnnounceAfterFocus(GetColorDescription(model:GetColor()))
+        end
     end
 
     action SetSelectedLayer(EditorLayer layer)

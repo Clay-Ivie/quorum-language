@@ -18,6 +18,7 @@ use Libraries.Interface.Item
 use Libraries.Interface.Controls.Scenes.Items.EditorModel
 use Libraries.Interface.Controls.Scenes.Items.Highlights.ModelSelectionHighlight
 use Libraries.Interface.Layouts.LayoutProperties
+use Libraries.Game.Layer2D
 
 /*
     The ColorPickerDialog class is a window opened from the Object Properties dialog. It shows a
@@ -154,6 +155,51 @@ class ColorPickerDialog is Dialog, SelectionListener
     end
 
     /*
+        Lays out the window, then moves it back inside the screen if any part of it is off the
+        edge. The window's height is only known after its contents are laid out, so it can be
+        placed partly off screen on a short window or at a large interface scale.
+    */
+    action Resize
+        parent:Dialog:Resize()
+        KeepOnScreen()
+    end
+
+    /*
+        Moves the window so all of it is on screen. If the window is larger than the screen, its
+        left and top edges are kept on screen, so the title bar and first colors stay visible.
+    */
+    private action KeepOnScreen
+        Layer2D layer = GetLayer()
+        if layer = undefined or layer:GetCamera() = undefined
+            return now
+        end
+
+        number screenWidth = layer:GetCamera():GetWidth()
+        number screenHeight = layer:GetCamera():GetHeight()
+        number x = GetX()
+        number y = GetY()
+
+        if x + GetWidth() > screenWidth
+            x = screenWidth - GetWidth()
+        end
+        if x < 0
+            x = 0
+        end
+
+        // The y axis points up, so the bottom edge is y and the top edge is y plus the height.
+        if y < 0
+            y = 0
+        end
+        if y + GetHeight() > screenHeight
+            y = screenHeight - GetHeight()
+        end
+
+        if x not= GetX() or y not= GetY()
+            SetPosition(x, y)
+        end
+    end
+
+    /*
         Applies a palette color to the target object, keeping its current alpha, then refreshes the
         Object Properties fields so they show the new values. The swatch is used to announce the
         change to screen readers.
@@ -183,7 +229,18 @@ class ColorPickerDialog is Dialog, SelectionListener
             if objectName = undefined or objectName = ""
                 objectName = "object"
             end
-            editor:NotifyAccessibility(swatch, swatch:GetName() + " applied to " + objectName)
+            // Swatches are not exposed to screen readers, so the announcement comes from this window.
+            editor:NotifyAccessibility(me, swatch:GetName() + " applied to " + objectName)
+        end
+    end
+
+    /*
+        Tells screen readers the name of the swatch that just gained focus. Swatches are not exposed to
+        screen readers themselves, so only the color name is spoken, without a role such as "custom".
+    */
+    action AnnounceSwatch(Item swatch)
+        if editor not= undefined and swatch not= undefined
+            editor:NotifyAccessibility(me, swatch:GetName())
         end
     end
 
@@ -216,6 +273,7 @@ class ColorPickerDialog is Dialog, SelectionListener
 
         ColorSwatchButton swatch
         swatch:SetName(colorName)
+        swatch:SetPickerDialog(me)
         applyBehavior:SetSwatch(swatch)
         // The square is drawn white and tinted with the swatch color through the icon color.
         Color whiteColor

@@ -78,9 +78,11 @@ class Item2DPropertiesDialog is PropertiesDialog
         nameField:SetText("")
         nameField:SetFocusable(true)
         nameField:AddTextChangeListener(me)
+        WatchNameField(nameField)
         nameContainer:Add(nameField)
         focusArray:Add(nameField)
         panel:Add(nameContainer)
+        AddNameWarning(panel)
 
         Label positionLabel
         
@@ -441,6 +443,7 @@ responsivenessGroup:Add(unmovableButton)
         end
 
         SetFields(cast(EditorItem2D, item))
+        UpdateNameWarning(false)
     end
 
     /*
@@ -605,5 +608,6 @@ responsivenessGroup:Add(unmovableButton)
         nameField:RemoveTextChangeListener(me)
         nameField:SetText(name)
         nameField:AddTextChangeListener(me)
+        UpdateNameWarning(false)
     end
 end
